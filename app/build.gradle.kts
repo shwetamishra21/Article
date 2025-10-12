@@ -44,14 +44,20 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
 
-    implementation(platform("androidx.compose:compose-bom:2024.10.00"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
+    // Explicit latest Material3 version that supports outlinedTextFieldColors
+    implementation("androidx.compose.material3:material3:1.2.0-beta02")
+
+    // Compose UI
+    implementation("androidx.compose.ui:ui:1.5.0")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.5.0")
+
+    // Navigation
     implementation("androidx.navigation:navigation-compose:2.8.2")
 
+    // Material icons
     implementation("androidx.compose.material:material-icons-extended")
 
+    // Debug tools
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

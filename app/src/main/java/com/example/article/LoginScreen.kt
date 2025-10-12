@@ -1,20 +1,17 @@
 package com.example.article
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 import com.example.article.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -24,17 +21,12 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
-
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(LavenderMist),
         contentAlignment = Alignment.Center
     ) {
-        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
-
         Card(
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier
@@ -78,30 +70,25 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                     shape = RoundedCornerShape(10.dp)
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
-                    onClick = {
-                        if (email.isBlank() || password.isBlank()) return@Button
-                        onLoginSuccess(email.trim()) // Directly succeed
-                    },
+                    onClick = { if (email.isNotBlank() && password.isNotBlank()) onLoginSuccess(email.trim()) },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = RoyalViolet)
                 ) {
-                    Text("Login")
+                    Text("Login", color = BrightWhite)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
                 OutlinedButton(
-                    onClick = {
-                        if (email.isBlank() || password.isBlank()) return@OutlinedButton
-                        onLoginSuccess(email.trim()) // Directly succeed
-                    },
+                    onClick = { if (email.isNotBlank() && password.isNotBlank()) onLoginSuccess(email.trim()) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("Sign Up")
+                    Text("Sign Up", color = RoyalViolet)
                 }
             }
         }

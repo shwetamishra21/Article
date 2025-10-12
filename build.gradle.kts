@@ -4,5 +4,4 @@ plugins {
     id("org.jetbrains.kotlin.android") version "1.9.23" apply false
 }
 
-// No repositories or buildscript blocks here.
-// They’re already defined in settings.gradle
+// No repositories or buildscript blocks here; they're already defined in settings.gradle

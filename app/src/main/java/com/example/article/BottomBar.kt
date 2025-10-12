@@ -32,12 +32,12 @@ fun BottomBar(navController: NavController) {
     )
 
     val gradientBrush = Brush.horizontalGradient(
-        colors = listOf(SoftLilac, RoyalViolet)
+        colors = listOf(DeepPlum, RoyalViolet, SoftLilac)
     )
 
     NavigationBar(
         containerColor = Color.Transparent,
-        tonalElevation = 8.dp,
+        tonalElevation = 10.dp,
         modifier = Modifier
             .background(gradientBrush)
             .fillMaxWidth()
@@ -58,8 +58,8 @@ fun BottomBar(navController: NavController) {
                     }
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = AppWhite,
-                    unselectedIconColor = Color(0xFFE0E0E0),
+                    selectedIconColor = BrightWhite,
+                    unselectedIconColor = PeachGlow,
                     indicatorColor = Color.Transparent
                 ),
                 alwaysShowLabel = false

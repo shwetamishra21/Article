@@ -2,10 +2,10 @@ package com.example.article
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
@@ -34,7 +34,7 @@ fun InboxScreen() {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(LightIvory)
+            .background(MaterialTheme.colorScheme.background)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -43,7 +43,7 @@ fun InboxScreen() {
                 "Inbox",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
-                color = DeepIndigo,
+                color = DeepPlum,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
         }
@@ -58,10 +58,10 @@ fun InboxScreen() {
 fun MessageCard(message: MessageItem) {
     Card(
         shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(4.dp),
+        elevation = CardDefaults.cardElevation(6.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { /* TODO */ }
+            .clickable { }
     ) {
         Row(
             modifier = Modifier
@@ -82,7 +82,7 @@ fun MessageCard(message: MessageItem) {
                 Text(
                     text = message.sender,
                     fontWeight = FontWeight.Bold,
-                    color = DeepIndigo,
+                    color = DeepPlum,
                     fontSize = 14.sp
                 )
                 Spacer(modifier = Modifier.height(4.dp))

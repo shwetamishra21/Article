@@ -11,7 +11,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.article.ui.theme.ForgeTheme
-import com.example.article.ui.theme.LightIvory
+import com.example.article.ui.theme.LavenderMist
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,7 +47,7 @@ fun ForgeApp() {
                     )
                 },
                 bottomBar = { BottomBar(navController) },
-                containerColor = LightIvory
+                containerColor = LavenderMist
             ) { innerPadding ->
                 NavHost(
                     navController = navController,
