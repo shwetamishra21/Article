@@ -13,11 +13,9 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
 import com.example.article.ui.theme.*
 
 data class SearchResult(
@@ -25,191 +23,101 @@ data class SearchResult(
     val title: String,
     val content: String,
     val author: String,
-    val category: String,
-    val relevance: Float
+    val category: String
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen() {
     var query by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
-
     val categories = listOf("All", "Technology", "Design", "Productivity", "Motivation", "Tutorial")
 
     val mockResults = listOf(
-        SearchResult(1, "🚀 Advanced Kotlin Tips", "Master advanced Kotlin programming concepts", "KotlinExpert", "Technology", 0.95f),
-        SearchResult(2, "🎨 UI Design Principles", "Learn fundamental UI design principles", "DesignGuru", "Design", 0.92f)
+        SearchResult(1, "🚀 Advanced Kotlin Tips", "Master advanced Kotlin concepts", "KotlinExpert", "Technology"),
+        SearchResult(2, "🎨 UI Design Principles", "Learn fundamental UI design principles", "DesignGuru", "Design")
     )
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(LavenderMist)
+            .background(MaterialTheme.colorScheme.background)
+            .padding(16.dp)
     ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item {
-                SearchHeader()
+        // Header
+        ForgeCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text("🔍 Discover Content", fontSize = 20.sp, color = MaterialTheme.colorScheme.onPrimary)
+                Text("Find articles, authors, and topics that inspire you", fontSize = 14.sp, color = MaterialTheme.colorScheme.secondary)
             }
+        }
 
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = BrightWhite),
-                    shape = RoundedCornerShape(16.dp)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Search Field
+        ForgeCard(modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text("Search articles, authors, or topics") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.primary) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    cursorColor = MaterialTheme.colorScheme.primary
+                ),
+                singleLine = true
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Categories
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(categories) { category ->
+                val isSelected = selectedCategory == category
+                ForgeCard(
+                    modifier = Modifier.clickable { selectedCategory = category },
                 ) {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        label = { Text("Search articles, authors, or topics...") },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.Search,
-                                contentDescription = "Search",
-                                tint = RoyalViolet
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = RoyalViolet,
-                            focusedLabelColor = RoyalViolet,
-                            cursorColor = RoyalViolet
-                        ),
-                        singleLine = true
+                    Text(
+                        category,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.secondary,
+                        fontSize = 12.sp
                     )
                 }
             }
+        }
 
-            item {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
-                ) {
-                    items(categories) { category ->
-                        val isSelected = selectedCategory == category
-                        Card(
-                            modifier = Modifier.clickable { selectedCategory = category },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) RoyalViolet else BrightWhite
-                            ),
-                            shape = RoundedCornerShape(20.dp)
-                        ) {
-                            Text(
-                                category,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                fontSize = 12.sp,
-                                color = if (isSelected) BrightWhite else DeepPlum
-                            )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Results
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (query.isEmpty()) {
+                item {
+                    ForgeCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Filled.TravelExplore, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Start Exploring", fontSize = 18.sp, color = MaterialTheme.colorScheme.secondary, textAlign = TextAlign.Center)
+                            Text("Search for articles, authors, or topics that interest you", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
+                        }
+                    }
+                }
+            } else {
+                items(mockResults) { result ->
+                    ForgeCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(result.title, fontSize = 16.sp, color = MaterialTheme.colorScheme.secondary)
+                            Text("By ${result.author}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(result.content, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
                         }
                     }
                 }
             }
-
-            if (query.isNotEmpty()) {
-                items(mockResults) { result ->
-                    SearchResultCard(result)
-                }
-            } else {
-                item {
-                    InitialSearchState()
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun SearchHeader() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = RoyalViolet),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(
-                "🔍 Discover Content",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = BrightWhite
-            )
-            Text(
-                "Find articles, authors, and topics that inspire you",
-                fontSize = 14.sp,
-                color = PeachGlow
-            )
-        }
-    }
-}
-
-@Composable
-fun SearchResultCard(result: SearchResult) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = BrightWhite),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                result.title,
-                fontWeight = FontWeight.Bold,
-                color = DeepPlum,
-                fontSize = 16.sp
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                "By ${result.author}",
-                fontSize = 12.sp,
-                color = SteelGray
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                result.content,
-                fontSize = 14.sp,
-                color = SteelGray
-            )
-        }
-    }
-}
-
-@Composable
-fun InitialSearchState() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = BrightWhite),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                Icons.Filled.TravelExplore,
-                contentDescription = null,
-                tint = RoyalViolet,
-                modifier = Modifier.size(48.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                "Start Exploring",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = DeepPlum,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                "Search for articles, authors, or topics that interest you",
-                fontSize = 14.sp,
-                color = SteelGray,
-                textAlign = TextAlign.Center
-            )
         }
     }
 }

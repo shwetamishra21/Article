@@ -1,7 +1,5 @@
 package com.example.article
 
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,17 +9,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,7 +58,7 @@ fun InboxScreen() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(LavenderMist)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         LazyColumn(
             modifier = Modifier
@@ -89,18 +80,14 @@ fun InboxScreen() {
                 ) {
                     items(filters) { filter ->
                         val isSelected = selectedFilter == filter
-                        Card(
-                            modifier = Modifier.clickable { selectedFilter = filter },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) RoyalViolet else BrightWhite
-                            ),
-                            shape = RoundedCornerShape(20.dp)
+                        ForgeCard(
+                            modifier = Modifier.clickable { selectedFilter = filter }
                         ) {
                             Text(
                                 filter,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 fontSize = 12.sp,
-                                color = if (isSelected) BrightWhite else DeepPlum
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.secondary
                             )
                         }
                     }
@@ -113,8 +100,7 @@ fun InboxScreen() {
                         message = message,
                         onRead = { messageId ->
                             messages = messages.map {
-                                if (it.id == messageId) it.copy(isRead = true)
-                                else it
+                                if (it.id == messageId) it.copy(isRead = true) else it
                             }
                         },
                         onDelete = { messageId ->
@@ -129,43 +115,40 @@ fun InboxScreen() {
 
 @Composable
 fun InboxHeader(unreadCount: Int, totalCount: Int) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = RoyalViolet),
-        shape = RoundedCornerShape(16.dp)
-    ) {
+    ForgeCard {
         Row(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
                 Text(
                     "📨 Inbox",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = BrightWhite
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
                 Text(
                     "$unreadCount unread of $totalCount messages",
-                    fontSize = 14.sp,
-                    color = PeachGlow
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.secondary
                 )
             }
 
             if (unreadCount > 0) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.Red),
-                    shape = CircleShape
-                ) {
-                    Text(
-                        text = unreadCount.toString(),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        color = BrightWhite,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                ForgeCard(
+                    modifier = Modifier.size(28.dp),
+                    content = {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = unreadCount.toString(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    }
+                )
             }
         }
     }
@@ -179,15 +162,13 @@ fun MessageCard(
 ) {
     var isExpanded by remember { mutableStateOf(false) }
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
+    ForgeCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
                 isExpanded = !isExpanded
                 if (!message.isRead) onRead(message.id)
-            },
-        colors = CardDefaults.cardColors(containerColor = BrightWhite)
+            }
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -198,13 +179,12 @@ fun MessageCard(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(RoyalViolet),
+                        .background(MaterialTheme.colorScheme.primary),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = message.sender.first().uppercaseChar().toString(),
-                        color = BrightWhite,
-                        fontWeight = FontWeight.Bold
+                        color = MaterialTheme.colorScheme.onPrimary
                     )
                 }
 
@@ -213,34 +193,33 @@ fun MessageCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = message.sender,
-                        fontWeight = FontWeight.Bold,
-                        color = DeepPlum,
-                        fontSize = 14.sp
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.secondary
                     )
                     Text(
                         text = message.subject,
-                        color = SteelGray,
-                        fontSize = 12.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
                 Text(
                     text = message.timestamp,
-                    color = SteelGray,
-                    fontSize = 11.sp
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
             if (isExpanded) {
                 Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = SoftLilac)
+                Divider(color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f))
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = message.content,
-                    color = SteelGray,
-                    fontSize = 14.sp
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }
