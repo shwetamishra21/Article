@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">Forge</string>
+    <string name="home_feed">Home </string>
+    <string name="welcome_message">Welcome to Forge!</string>
+    <string name="connect_text">Connect to other developers</string>
+    <string name="trending_text">Trending: Native</string>
+    <string name="create_post">Create Post</string>
+
+    <string name="search_developers">Search Developers</string>
+    <string name="search_hint">Search...</string>
+    <string name="recent_searches">Recent Searches:</string>
+
+    <string name="your_messages">Your Messages</string>
+    <string name="no_new_messages">No new messages</string>
+    <string name="check_later">Check later</string>
+    <string name="compose_message">Compose Message</string>
+
+    <string name="your_profile">Your Profile</string>
+    <string name="edit_profile">Edit Profile</string>
+    <string name="bio_text">Bio: Android Development</string>
+</resources>
