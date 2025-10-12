@@ -1,68 +1,66 @@
 package com.example.article
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import com.example.article.ui.theme.*
+import androidx.compose.foundation.isSystemInDarkTheme
 
-sealed class BottomNavItem(val route: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    object Dashboard : BottomNavItem("dashboard", Icons.Filled.Home)
-    object Search : BottomNavItem("search", Icons.Filled.Search)
-    object Inbox : BottomNavItem("inbox", Icons.Filled.Email)
-    object Profile : BottomNavItem("profile", Icons.Filled.Person)
-}
+data class BottomNavItem(
+    val title: String,
+    val route: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+)
 
 @Composable
 fun BottomBar(navController: NavController) {
     val items = listOf(
-        BottomNavItem.Dashboard,
-        BottomNavItem.Search,
-        BottomNavItem.Inbox,
-        BottomNavItem.Profile
+        BottomNavItem("Home", "home", Icons.Default.Home),
+        BottomNavItem("Search", "search", Icons.Default.Search),
+        BottomNavItem("Inbox", "inbox", Icons.Default.Mail),
+        BottomNavItem("Profile", "profile", Icons.Default.Person)
     )
 
-    val gradientBrush = Brush.horizontalGradient(
-        colors = listOf(DeepPlum, RoyalViolet, SoftLilac)
-    )
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    val isDark = isSystemInDarkTheme()
+    val bgColor = if (isDark) Color(0xFF1A1A1A) else Color(0xFFFDFBF9)
+    val activeColor = if (isDark) Color(0xFFD0A3FF) else Color(0xFF6C3EF1)
+    val inactiveColor = if (isDark) Color(0xFFB0B0B0) else Color.Gray
 
     NavigationBar(
-        containerColor = Color.Transparent,
-        tonalElevation = 10.dp,
-        modifier = Modifier
-            .background(gradientBrush)
-            .fillMaxWidth()
+        containerColor = bgColor,
+        tonalElevation = 6.dp
     ) {
-        val navBackStackEntry by navController.currentBackStackEntryAsState()
-        val currentRoute = navBackStackEntry?.destination?.route
-
         items.forEach { item ->
             NavigationBarItem(
-                icon = { Icon(item.icon, contentDescription = item.route) },
+                icon = { Icon(item.icon, contentDescription = item.title) },
+                label = { Text(item.title) },
                 selected = currentRoute == item.route,
                 onClick = {
                     if (currentRoute != item.route) {
                         navController.navigate(item.route) {
                             launchSingleTop = true
                             restoreState = true
+                            popUpTo(navController.graph.startDestinationId) {
+                                saveState = true
+                            }
                         }
                     }
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = BrightWhite,
-                    unselectedIconColor = PeachGlow,
-                    indicatorColor = Color.Transparent
-                ),
-                alwaysShowLabel = false
+                    selectedIconColor = activeColor,
+                    selectedTextColor = activeColor,
+                    indicatorColor = activeColor.copy(alpha = 0.15f),
+                    unselectedIconColor = inactiveColor,
+                    unselectedTextColor = inactiveColor
+                )
             )
         }
     }

@@ -20,17 +20,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.isSystemInDarkTheme
 import com.example.article.ui.theme.*
 
 data class Post(
-    val id: Int = 0,
-    val title: String = "",
-    val content: String = "",
-    val author: String = "",
-    val timestamp: String = "",
-    val likes: Int = 0,
-    val comments: Int = 0,
-    val category: String = "General"
+    val id: Int,
+    val title: String,
+    val content: String,
+    val author: String,
+    val timestamp: String,
+    val likes: Int,
+    val comments: Int,
+    val category: String
 )
 
 @Composable
@@ -38,263 +39,129 @@ fun HomeScreen() {
     var posts by remember {
         mutableStateOf(
             listOf(
-                Post(1, "🚀 Welcome to Forge!", "Discover amazing content and connect with creative minds from around the world.", "Admin", "2 hours ago", 42, 12, "Announcement"),
-                Post(2, "✨ The Future of Design", "Exploring new trends in UI/UX design and how they're shaping the digital landscape.", "Designer", "4 hours ago", 28, 8, "Design"),
-                Post(3, "🎯 Productivity Tips", "5 proven methods to boost your daily productivity and get more done.", "ProductivityGuru", "6 hours ago", 67, 23, "Tips")
+                Post(1, "🚀 Welcome to Forge!", "Discover amazing content and connect with creative minds.", "Admin", "2h ago", 42, 12, "Announcement"),
+                Post(2, "✨ The Future of Design", "Exploring trends in UI/UX shaping digital experiences.", "Designer", "4h ago", 28, 8, "Design"),
+                Post(3, "🎯 Productivity Hacks", "Boost your daily workflow with 5 simple tips.", "Guru", "6h ago", 67, 23, "Tips")
             )
         )
     }
 
+    val bgColor = MaterialTheme.colorScheme.background
+    val isDark = isSystemInDarkTheme()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(LavenderMist)
+            .background(bgColor)
     ) {
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(bottom = 20.dp)
+            contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            // Header section
-            item {
-                WelcomeHeader()
-            }
+            item { HomeHeader() }
 
-            // Posts
             items(posts, key = { it.id }) { post ->
-                PostCard(
-                    post = post,
-                    onLike = { postId ->
-                        posts = posts.map {
-                            if (it.id == postId) it.copy(likes = it.likes + 1)
-                            else it
-                        }
-                    },
-                    onComment = { postId ->
-                        posts = posts.map {
-                            if (it.id == postId) it.copy(comments = it.comments + 1)
-                            else it
-                        }
+                PostCard(post, onLike = { postId ->
+                    posts = posts.map {
+                        if (it.id == postId) it.copy(likes = it.likes + 1) else it
                     }
-                )
+                })
             }
         }
     }
 }
 
 @Composable
-fun WelcomeHeader() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = RoyalViolet),
-        elevation = CardDefaults.cardElevation(8.dp),
-        shape = RoundedCornerShape(16.dp)
+fun HomeHeader() {
+    val gradient = Brush.horizontalGradient(
+        listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(gradient, RoundedCornerShape(16.dp))
+            .padding(20.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    "📰 Latest Posts",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = BrightWhite
-                )
-                Text(
-                    "Discover what's trending",
-                    fontSize = 14.sp,
-                    color = PeachGlow
-                )
-            }
-
-            IconButton(
-                onClick = { /* Handle refresh */ },
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(BrightWhite.copy(alpha = 0.2f))
-            ) {
-                Icon(
-                    Icons.Filled.Refresh,
-                    contentDescription = "Refresh",
-                    tint = BrightWhite
-                )
-            }
+        Column {
+            Text(
+                "🔥 Forge Feed",
+                color = MaterialTheme.colorScheme.onPrimary,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "Discover the latest ideas and trends",
+                color = PeachGlow,
+                fontSize = 14.sp
+            )
         }
     }
 }
 
 @Composable
-fun PostCard(
-    post: Post,
-    onLike: (Int) -> Unit,
-    onComment: (Int) -> Unit
-) {
+fun PostCard(post: Post, onLike: (Int) -> Unit) {
     var isExpanded by remember { mutableStateOf(false) }
     var isLiked by remember { mutableStateOf(false) }
+
+    val isDark = isSystemInDarkTheme()
+    val cardColor = if (isDark) CardGlassDark else CardGlassLight
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { isExpanded = !isExpanded },
-        elevation = CardDefaults.cardElevation(6.dp),
+        colors = CardDefaults.cardColors(containerColor = cardColor),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = BrightWhite)
+        elevation = CardDefaults.cardElevation(6.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(RoyalViolet),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = post.author.first().uppercaseChar().toString(),
-                            color = BrightWhite,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column {
-                        Text(
-                            post.author,
-                            fontWeight = FontWeight.SemiBold,
-                            color = DeepPlum,
-                            fontSize = 14.sp
-                        )
-                        Text(
-                            post.timestamp,
-                            color = SteelGray,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
-                // Category badge
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = SoftLilac),
-                    shape = RoundedCornerShape(12.dp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        post.category,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = DeepPlum
+                        text = post.author.first().uppercase(),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        fontWeight = FontWeight.Bold
                     )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(post.author, fontWeight = FontWeight.Bold)
+                    Text(post.timestamp, fontSize = 12.sp, color = SteelGray)
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Content
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(post.title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                post.title,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = DeepPlum
+                post.content,
+                maxLines = if (isExpanded) Int.MAX_VALUE else 2,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 14.sp
             )
 
             Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                post.content,
-                fontSize = 14.sp,
-                color = SteelGray,
-                maxLines = if (isExpanded) Int.MAX_VALUE else 2,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            if (post.content.length > 50) {
-                Text(
-                    text = if (isExpanded) "Show less" else "Read more",
-                    color = RoyalViolet,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .clickable { isExpanded = !isExpanded }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Action buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row {
-                    // Like button
-                    Row(
-                        modifier = Modifier
-                            .clickable {
-                                isLiked = !isLiked
-                                if (isLiked) onLike(post.id)
-                            }
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                            contentDescription = "Like",
-                            tint = if (isLiked) Color.Red else SteelGray,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            "${post.likes + if (isLiked) 1 else 0}",
-                            fontSize = 12.sp,
-                            color = SteelGray
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    // Comment button
-                    Row(
-                        modifier = Modifier
-                            .clickable { onComment(post.id) }
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Filled.Comment,
-                            contentDescription = "Comment",
-                            tint = SteelGray,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            "${post.comments}",
-                            fontSize = 12.sp,
-                            color = SteelGray
-                        )
-                    }
-                }
-
-                // Share button
-                IconButton(onClick = { /* Handle share */ }) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                IconButton(onClick = {
+                    isLiked = !isLiked
+                    if (isLiked) onLike(post.id)
+                }) {
                     Icon(
-                        Icons.Filled.Share,
-                        contentDescription = "Share",
-                        tint = SteelGray,
-                        modifier = Modifier.size(18.dp)
+                        imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = null,
+                        tint = if (isLiked) Color.Red else MaterialTheme.colorScheme.onSurface
                     )
+                }
+                IconButton(onClick = {}) {
+                    Icon(Icons.Filled.Comment, contentDescription = null)
                 }
             }
         }
