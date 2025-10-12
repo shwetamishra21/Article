@@ -1,7 +1,9 @@
-// Top-level build.gradle.kts
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
-    id("com.android.application") version "8.3.0" apply false
-    id("org.jetbrains.kotlin.android") version "1.9.23" apply false
+    id("com.android.application") version "8.5.2" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
 }
 
-// No repositories or buildscript blocks here; they're already defined in settings.gradle
+tasks.register("clean", Delete::class) {
+    delete(rootProject.buildDir)
+}
