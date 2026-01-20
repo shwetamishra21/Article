@@ -16,19 +16,17 @@ import com.example.article.ui.theme.LavenderMist
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 
+// ✅ Import NewPostScreen
+import com.example.article.NewPostScreen
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-
         FirebaseApp.initializeApp(this)
-
-        // Edge-to-edge
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        setContent {
-            ForgeApp()
-        }
+        setContent { ForgeApp() }
     }
 }
 
@@ -36,25 +34,27 @@ class MainActivity : ComponentActivity() {
 fun ForgeApp() {
     ForgeTheme {
         val navController = rememberNavController()
-        var isLoggedIn by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser != null) }
-        var username by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser?.email ?: "") }
+        val firebaseAuth = remember { FirebaseAuth.getInstance() }
+
+        var isLoggedIn by remember { mutableStateOf(firebaseAuth.currentUser != null) }
+        var name by remember { mutableStateOf(firebaseAuth.currentUser?.displayName ?: "") }
 
         if (!isLoggedIn) {
             LoginScreen(
                 onLoginSuccess = { email ->
                     isLoggedIn = true
-                    username = email
+                    name = firebaseAuth.currentUser?.displayName ?: email
                 }
             )
         } else {
             Scaffold(
                 topBar = {
                     TopBar(
-                        username = username,
+                        username = name,
                         onLogout = {
-                            FirebaseAuth.getInstance().signOut()
+                            firebaseAuth.signOut()
                             isLoggedIn = false
-                            username = ""
+                            name = ""
                         }
                     )
                 },
@@ -71,12 +71,22 @@ fun ForgeApp() {
                     composable("inbox") { InboxScreen() }
                     composable("profile") {
                         ProfileScreen(
-                            username = username,
-                            onUsernameChange = { username = it },
+                            name = name,
+                            onNameChange = { name = it },
                             onLogout = {
-                                FirebaseAuth.getInstance().signOut()
+                                firebaseAuth.signOut()
                                 isLoggedIn = false
-                                username = ""
+                                name = ""
+                            }
+                        )
+                    }
+                    composable("new_post") {
+                        // ✅ NewPostScreen reference works now
+                        NewPostScreen(
+                            onPostUploaded = {
+                                navController.navigate("dashboard") {
+                                    popUpTo("dashboard") { inclusive = true }
+                                }
                             }
                         )
                     }

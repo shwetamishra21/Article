@@ -21,6 +21,7 @@ data class BottomNavItem(
 fun BottomBar(navController: NavController) {
     val items = listOf(
         BottomNavItem("Home", "home", Icons.Default.Home),
+        BottomNavItem("Post", "new_post", Icons.Default.AddBox),
         BottomNavItem("Search", "search", Icons.Default.Search),
         BottomNavItem("Inbox", "inbox", Icons.Default.Mail),
         BottomNavItem("Profile", "profile", Icons.Default.Person)
@@ -34,10 +35,7 @@ fun BottomBar(navController: NavController) {
     val activeColor = if (isDark) Color(0xFFD0A3FF) else Color(0xFF6C3EF1)
     val inactiveColor = if (isDark) Color(0xFFB0B0B0) else Color.Gray
 
-    NavigationBar(
-        containerColor = bgColor,
-        tonalElevation = 6.dp
-    ) {
+    NavigationBar(containerColor = bgColor, tonalElevation = 6.dp) {
         items.forEach { item ->
             NavigationBarItem(
                 icon = { Icon(item.icon, contentDescription = item.title) },
