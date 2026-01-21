@@ -32,6 +32,7 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
     var password by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
     var isSignUpMode by remember { mutableStateOf(false) }
+
     var showError by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val auth = FirebaseAuth.getInstance()
