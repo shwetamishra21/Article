@@ -11,87 +11,85 @@ import androidx.core.view.WindowCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.article.ui.theme.ForgeTheme
-import com.example.article.ui.theme.LavenderMist
-import com.google.firebase.FirebaseApp
-import com.google.firebase.auth.FirebaseAuth
-
-// ✅ Import NewPostScreen
-import com.example.article.NewPostScreen
+import com.example.article.ui.theme.ArticleTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        FirebaseApp.initializeApp(this)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        setContent { ForgeApp() }
+        setContent {
+            ArticleTheme {
+                ArticleApp()
+            }
+        }
     }
 }
 
 @Composable
-fun ForgeApp() {
-    ForgeTheme {
-        val navController = rememberNavController()
-        val firebaseAuth = remember { FirebaseAuth.getInstance() }
+fun ArticleApp() {
+    val navController = rememberNavController()
 
-        var isLoggedIn by remember { mutableStateOf(firebaseAuth.currentUser != null) }
-        var name by remember { mutableStateOf(firebaseAuth.currentUser?.displayName ?: "") }
+    // UI-only login state
+    var isLoggedIn by remember { mutableStateOf(false) }
 
-        if (!isLoggedIn) {
-            LoginScreen(
-                onLoginSuccess = { email ->
-                    isLoggedIn = true
-                    name = firebaseAuth.currentUser?.displayName ?: email
+    if (!isLoggedIn) {
+        LoginScreen(
+            onLoginSuccess = {
+                isLoggedIn = true
+            }
+        )
+    } else {
+        Scaffold(
+            topBar = { TopBar() },
+            bottomBar = { BottomBar(navController) }
+        ) { innerPadding ->
+            NavHost(
+                navController = navController,
+                startDestination = "home",
+                modifier = Modifier.padding(innerPadding)
+            ) {
+                composable("home") { HomeScreen() }
+                composable("search") { SearchScreen() }
+                composable("inbox") { InboxScreen() }
+                composable("profile") {
+                    ProfileScreen(
+                        onLogout = { isLoggedIn = false }
+                    )
                 }
-            )
-        } else {
-            Scaffold(
-                topBar = {
-                    TopBar(
-                        username = name,
-                        onLogout = {
-                            firebaseAuth.signOut()
-                            isLoggedIn = false
-                            name = ""
+                composable("requests") {
+                    RequestsScreen(
+                        onCreateNew = {
+                            // next screen later: request_form
                         }
                     )
-                },
-                bottomBar = { BottomBar(navController) },
-                containerColor = LavenderMist
-            ) { innerPadding ->
-                NavHost(
-                    navController = navController,
-                    startDestination = "dashboard",
-                    modifier = Modifier.padding(innerPadding)
-                ) {
-                    composable("dashboard") { HomeScreen() }
-                    composable("search") { SearchScreen() }
-                    composable("inbox") { InboxScreen() }
-                    composable("profile") {
-                        ProfileScreen(
-                            name = name,
-                            onNameChange = { name = it },
-                            onLogout = {
-                                firebaseAuth.signOut()
-                                isLoggedIn = false
-                                name = ""
+                }
+                composable("request_form") {
+                    RequestFormScreen(
+                        onCancel = {
+                            navController.popBackStack()
+                        },
+                        onSubmit = {
+                            navController.popBackStack()
+                        }
+                    )
+                }
+
+
+
+                // ✅ THIS WAS MISSING — ADD IT
+                composable("new_post") {
+                    NewPostScreen(
+                        onPostUploaded = {
+                            navController.navigate("home") {
+                                popUpTo("home") { inclusive = true }
                             }
-                        )
-                    }
-                    composable("new_post") {
-                        // ✅ NewPostScreen reference works now
-                        NewPostScreen(
-                            onPostUploaded = {
-                                navController.navigate("dashboard") {
-                                    popUpTo("dashboard") { inclusive = true }
-                                }
-                            }
-                        )
-                    }
+                        }
+                    )
                 }
             }
+
         }
     }
 }

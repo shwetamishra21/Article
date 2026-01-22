@@ -2,7 +2,6 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("kotlin-parcelize")
-    id("com.google.gms.google-services")
 }
 
 android {
@@ -46,7 +45,11 @@ android {
         kotlinCompilerExtensionVersion = "1.5.14"
     }
 
-    packaging.resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
 }
 
 dependencies {
@@ -59,17 +62,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended:1.7.3")
     implementation("androidx.navigation:navigation-compose:2.8.2")
 
-    // Coil for image loading
+    // Image loading
     implementation("io.coil-kt:coil-compose:2.6.0")
-
-    // ✅ Firebase (with proper KTX imports)
-    implementation(platform("com.google.firebase:firebase-bom:33.4.0"))
-    implementation("com.google.firebase:firebase-auth-ktx")
-    implementation("com.google.firebase:firebase-firestore-ktx")
-    implementation("com.google.firebase:firebase-storage-ktx")
-
-    // Coroutines support for Firebase tasks
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 
     // Debug + Test
     debugImplementation("androidx.compose.ui:ui-tooling")

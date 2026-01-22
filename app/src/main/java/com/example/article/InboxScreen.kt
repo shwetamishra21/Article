@@ -3,224 +3,162 @@ package com.example.article
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx. compose. ui. text. font. FontWeight
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.article.ui.theme.*
+
+/* ---------------- DATA ---------------- */
 
 data class MessageItem(
     val id: Int,
     val sender: String,
-    val subject: String,
-    val content: String,
-    val timestamp: String,
-    val isRead: Boolean = false,
-    val priority: MessagePriority = MessagePriority.NORMAL,
-    val type: MessageType = MessageType.MESSAGE
+    val lastMessage: String,
+    val time: String,
+    val unread: Boolean
 )
 
-enum class MessagePriority { LOW, NORMAL, HIGH, URGENT }
-enum class MessageType { MESSAGE, NOTIFICATION, SYSTEM, INVITE }
+/* ---------------- SCREEN ---------------- */
 
 @Composable
 fun InboxScreen() {
     var messages by remember {
         mutableStateOf(
             listOf(
-                MessageItem(1, "Alice Johnson", "Project Update", "Hey! The UI design mockups are ready for review.", "10:15 AM", false, MessagePriority.HIGH, MessageType.MESSAGE),
-                MessageItem(2, "System", "Welcome to Forge!", "Welcome to Forge! Start exploring amazing content.", "Yesterday", true, MessagePriority.NORMAL, MessageType.SYSTEM),
-                MessageItem(3, "Bob Smith", "Collaboration Invite", "Hi! Would you like to collaborate on a project?", "2 days ago", false, MessagePriority.URGENT, MessageType.INVITE)
+                MessageItem(1, "Electrician Ravi", "I can come tomorrow", "10:15 AM", true),
+                MessageItem(2, "Plumber Aman", "Issue resolved 👍", "Yesterday", false)
             )
         )
-    }
-
-    var selectedFilter by remember { mutableStateOf("All") }
-    val filters = listOf("All", "Unread", "Important", "System")
-
-    val filteredMessages = when (selectedFilter) {
-        "All" -> messages
-        "Unread" -> messages.filter { !it.isRead }
-        "Important" -> messages.filter { it.priority == MessagePriority.HIGH || it.priority == MessagePriority.URGENT }
-        "System" -> messages.filter { it.type == MessageType.SYSTEM || it.type == MessageType.NOTIFICATION }
-        else -> messages
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .padding(16.dp)
     ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                InboxHeader(
-                    unreadCount = messages.count { !it.isRead },
-                    totalCount = messages.size
-                )
-            }
-
-            item {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
-                ) {
-                    items(filters) { filter ->
-                        val isSelected = selectedFilter == filter
-                        ForgeCard(
-                            modifier = Modifier.clickable { selectedFilter = filter }
-                        ) {
-                            Text(
-                                filter,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                fontSize = 12.sp,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.secondary
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (filteredMessages.isNotEmpty()) {
-                items(filteredMessages, key = { it.id }) { message ->
-                    MessageCard(
-                        message = message,
-                        onRead = { messageId ->
-                            messages = messages.map {
-                                if (it.id == messageId) it.copy(isRead = true) else it
-                            }
-                        },
-                        onDelete = { messageId ->
-                            messages = messages.filterNot { it.id == messageId }
-                        }
-                    )
+        if (messages.isEmpty()) {
+            EmptyInbox()
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                item { InboxHeader() }
+                items(messages, key = { it.id }) { msg ->
+                    MessageRow(msg)
                 }
             }
         }
     }
 }
 
-@Composable
-fun InboxHeader(unreadCount: Int, totalCount: Int) {
-    ForgeCard {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    "📨 Inbox",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-                Text(
-                    "$unreadCount unread of $totalCount messages",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.secondary
-                )
-            }
+/* ---------------- HEADER ---------------- */
 
-            if (unreadCount > 0) {
-                ForgeCard(
-                    modifier = Modifier.size(28.dp),
-                    content = {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = unreadCount.toString(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        }
-                    }
-                )
-            }
-        }
+@Composable
+fun InboxHeader() {
+    Text(
+        text = "Inbox",
+        style = MaterialTheme.typography.headlineSmall,
+        color = MaterialTheme.colorScheme.onBackground
+    )
+}
+
+/* ---------------- EMPTY STATE ---------------- */
+
+@Composable
+fun EmptyInbox() {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = Icons.Default.Chat,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(72.dp)
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "No conversations yet",
+            fontSize = 18.sp,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Text(
+            "When you start chatting, messages appear here",
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
-@Composable
-fun MessageCard(
-    message: MessageItem,
-    onRead: (Int) -> Unit,
-    onDelete: (Int) -> Unit
-) {
-    var isExpanded by remember { mutableStateOf(false) }
+/* ---------------- MESSAGE ROW ---------------- */
 
-    ForgeCard(
+@Composable
+fun MessageRow(message: MessageItem) {
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable {
-                isExpanded = !isExpanded
-                if (!message.isRead) onRead(message.id)
-            }
+            .clickable { },
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(4.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = message.sender.first().uppercaseChar().toString(),
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = message.sender,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                    Text(
-                        text = message.subject,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
                 Text(
-                    text = message.timestamp,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    message.sender.first().uppercase(),
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
             }
 
-            if (isExpanded) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Divider(color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f))
-                Spacer(modifier = Modifier.height(12.dp))
+            Spacer(Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = message.content,
-                    style = MaterialTheme.typography.bodyMedium,
+                    message.sender,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
+                Text(
+                    message.lastMessage,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    message.time,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (message.unread) {
+                    Spacer(Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                }
             }
         }
     }

@@ -1,8 +1,5 @@
 package com.example.article
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,97 +7,89 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.Comment
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.isSystemInDarkTheme
-import coil.compose.AsyncImage
 import com.example.article.ui.theme.*
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
-// -------------------------------
-// 🔹 DATA CLASS FOR POSTS
-// -------------------------------
+/* ---------------- DATA ---------------- */
+
 data class Post(
     val id: Int,
     val title: String,
     val content: String,
     val author: String,
-    val timestamp: String,
-    val likes: Int,
-    val comments: Int,
-    val category: String
+    val time: String,
+    val likes: Int
 )
 
-// -------------------------------
-// 🔹 HOME SCREEN
-// -------------------------------
+/* ---------------- HOME ---------------- */
+
 @Composable
 fun HomeScreen() {
-    val auth = FirebaseAuth.getInstance()
-    val userEmail = auth.currentUser?.email ?: "User"
-    val username = userEmail.substringBefore("@")
-
     var posts by remember {
         mutableStateOf(
             listOf(
-                Post(1, "🚀 Welcome to Forge!", "Discover amazing content and connect with creative minds.", "Admin", "2h ago", 42, 12, "Announcement"),
-                Post(2, "✨ The Future of Design", "Exploring trends in UI/UX shaping digital experiences.", "Designer", "4h ago", 28, 8, "Design"),
-                Post(3, "🎯 Productivity Hacks", "Boost your daily workflow with 5 simple tips.", "Guru", "6h ago", 67, 23, "Tips")
+                Post(1, "Welcome to Article 👋", "Your community updates will appear here.", "Admin", "2h ago", 12),
+                Post(2, "Looking for an electrician", "Anyone has a good local contact?", "Ravi", "5h ago", 5)
             )
         )
     }
 
-    val bgColor = MaterialTheme.colorScheme.background
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(bgColor)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                    )
+                )
+            )
     ) {
         LazyColumn(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            item {
-                HomeHeader(username = username)
-            }
+
+            item { HomeHeader(username = "User") }
 
             items(posts, key = { it.id }) { post ->
-                PostCard(post, onLike = { postId ->
-                    posts = posts.map {
-                        if (it.id == postId) it.copy(likes = it.likes + 1) else it
+                PostCard(
+                    post = post,
+                    onLike = {
+                        posts = posts.map {
+                            if (it.id == post.id) it.copy(likes = it.likes + 1) else it
+                        }
                     }
-                })
+                )
             }
         }
     }
 }
 
-// -------------------------------
-// 🔹 HEADER WITH GREETING
-// -------------------------------
+/* ---------------- HEADER ---------------- */
+
 @Composable
 fun HomeHeader(username: String) {
     val gradient = Brush.horizontalGradient(
-        listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+        listOf(
+            MaterialTheme.colorScheme.primary,
+            MaterialTheme.colorScheme.secondary
+        )
     )
 
     Box(
@@ -111,192 +100,99 @@ fun HomeHeader(username: String) {
     ) {
         Column {
             Text(
-                "Hey $username! 👋",
+                text = "Welcome 👋",
+                color = MaterialTheme.colorScheme.onPrimary,
+                fontSize = 14.sp
+            )
+            Text(
+                text = username,
                 color = MaterialTheme.colorScheme.onPrimary,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
-                "Discover the latest ideas and trends",
-                color = PeachGlow,
-                fontSize = 14.sp
+                text = "Stay connected with your neighborhood",
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                fontSize = 13.sp
             )
         }
     }
 }
 
-// -------------------------------
-// 🔹 POST CARD
-// -------------------------------
-@Composable
-fun PostCard(post: Post, onLike: (Int) -> Unit) {
-    var isExpanded by remember { mutableStateOf(false) }
-    var isLiked by remember { mutableStateOf(false) }
+/* ---------------- POST CARD ---------------- */
 
-    val isDark = isSystemInDarkTheme()
-    val cardColor = if (isDark) CardGlassDark else CardGlassLight
+@Composable
+fun PostCard(
+    post: Post,
+    onLike: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var liked by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { isExpanded = !isExpanded },
-        colors = CardDefaults.cardColors(containerColor = cardColor),
+            .clickable { expanded = !expanded },
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(6.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(Modifier.padding(16.dp)) {
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primary),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = post.author.first().uppercase(),
+                        post.author.first().uppercase(),
                         color = MaterialTheme.colorScheme.onPrimary,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                Spacer(modifier = Modifier.width(12.dp))
+
+                Spacer(Modifier.width(12.dp))
+
                 Column {
                     Text(post.author, fontWeight = FontWeight.Bold)
-                    Text(post.timestamp, fontSize = 12.sp, color = SteelGray)
+                    Text(post.time, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(post.title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(Modifier.height(10.dp))
+
+            Text(post.title, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
             Text(
                 post.content,
-                maxLines = if (isExpanded) Int.MAX_VALUE else 2,
-                overflow = TextOverflow.Ellipsis,
-                fontSize = 14.sp
+                maxLines = if (expanded) Int.MAX_VALUE else 2,
+                overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Spacer(Modifier.height(8.dp))
+
+            Row {
                 IconButton(onClick = {
-                    isLiked = !isLiked
-                    if (isLiked) onLike(post.id)
+                    liked = !liked
+                    if (liked) onLike()
                 }) {
                     Icon(
-                        imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        imageVector = if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         contentDescription = null,
-                        tint = if (isLiked) Color.Red else MaterialTheme.colorScheme.onSurface
+                        tint = if (liked) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface
                     )
                 }
+
                 IconButton(onClick = {}) {
                     Icon(Icons.AutoMirrored.Filled.Comment, contentDescription = null)
                 }
+
+                Text("${post.likes}", modifier = Modifier.align(Alignment.CenterVertically))
             }
-        }
-    }
-}
-
-// -------------------------------
-// 🔹 NEW POST SCREEN
-// -------------------------------
-@Composable
-fun NewPostScreen(onPostUploaded: () -> Unit) {
-    val auth = FirebaseAuth.getInstance()
-    val firestore = FirebaseFirestore.getInstance()
-    val storage = FirebaseStorage.getInstance()
-
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
-    var caption by remember { mutableStateOf("") }
-    var isUploading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    val imagePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri -> imageUri = uri }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("📸 Create a Post", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(16.dp))
-
-        Box(
-            modifier = Modifier
-                .height(220.dp)
-                .fillMaxWidth()
-                .background(Color(0xFFF3F3F3), RoundedCornerShape(12.dp))
-                .clickable { imagePicker.launch("image/*") },
-            contentAlignment = Alignment.Center
-        ) {
-            if (imageUri != null) {
-                AsyncImage(model = imageUri, contentDescription = null)
-            } else {
-                Text("Tap to choose image")
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = caption,
-            onValueChange = { caption = it },
-            placeholder = { Text("Write a caption...") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(Modifier.height(24.dp))
-
-        ForgeButton(
-            text = if (isUploading) "Uploading..." else "Upload Post",
-            onClick = {
-                val user = auth.currentUser
-                val uri = imageUri
-                if (user == null) { errorMessage = "Please log in first"; return@ForgeButton }
-                if (uri == null) { errorMessage = "Select an image"; return@ForgeButton }
-
-                isUploading = true
-                errorMessage = null
-
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        val ref = storage.reference.child("posts/${user.uid}/${System.currentTimeMillis()}.jpg")
-                        ref.putFile(uri).await()
-                        val url = ref.downloadUrl.await().toString()
-
-                        val post = hashMapOf(
-                            "authorId" to user.uid,
-                            "authorName" to (user.displayName ?: user.email ?: "Anonymous"),
-                            "caption" to caption,
-                            "imageUrl" to url,
-                            "timestamp" to System.currentTimeMillis()
-                        )
-
-                        firestore.collection("posts").add(post).await()
-
-                        CoroutineScope(Dispatchers.Main).launch {
-                            isUploading = false
-                            imageUri = null
-                            caption = ""
-                            onPostUploaded()
-                        }
-                    } catch (e: Exception) {
-                        CoroutineScope(Dispatchers.Main).launch {
-                            isUploading = false
-                            errorMessage = e.localizedMessage
-                        }
-                    }
-                }
-            }
-        )
-
-        if (errorMessage != null) {
-            Spacer(Modifier.height(12.dp))
-            Text(errorMessage!!, color = Color.Red)
         }
     }
 }
