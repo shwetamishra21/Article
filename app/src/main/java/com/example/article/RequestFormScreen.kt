@@ -1,39 +1,60 @@
 package com.example.article
 
+import android.app.DatePickerDialog
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.Calendar
 
 @Composable
 fun RequestFormScreen(
     onCancel: () -> Unit,
     onSubmit: () -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("Plumber") }
-
-    val categories = listOf(
+    val services = listOf(
         "Plumber",
         "Electrician",
-        "Cleaning",
+        "Cleaner",
         "Carpenter",
         "Painter",
         "Other"
     )
 
+    var selectedService by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var selectedDate by remember { mutableStateOf("Select date") }
+    var showServiceMenu by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val calendar = Calendar.getInstance()
+
+    val datePickerDialog = DatePickerDialog(
+        context,
+        { _, year, month, day ->
+            selectedDate = "$day/${month + 1}/$year"
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
+
     val backgroundGradient = Brush.verticalGradient(
-        colors = listOf(
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+        listOf(
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
             MaterialTheme.colorScheme.background
         )
     )
@@ -59,51 +80,92 @@ fun RequestFormScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(Modifier.height(24.dp))
 
-        /* ---------- CATEGORY ---------- */
-        Text("Category", fontSize = 14.sp)
-        Spacer(modifier = Modifier.height(8.dp))
+        /* ---------- SERVICE DROPDOWN ---------- */
+        Text("Who do you want to hire?", fontSize = 14.sp)
+        Spacer(Modifier.height(6.dp))
 
-        CategorySelector(
-            categories = categories,
-            selected = selectedCategory,
-            onSelect = { selectedCategory = it }
-        )
+        Box {
+            OutlinedTextField(
+                value = selectedService,
+                onValueChange = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showServiceMenu = true },
+                readOnly = true,
+                placeholder = { Text("Select service") },
+                trailingIcon = {
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        contentDescription = null
+                    )
+                }
+            )
 
-        Spacer(modifier = Modifier.height(20.dp))
+            DropdownMenu(
+                expanded = showServiceMenu,
+                onDismissRequest = { showServiceMenu = false }
+            ) {
+                services.forEach { service ->
+                    DropdownMenuItem(
+                        text = { Text(service) },
+                        onClick = {
+                            selectedService = service
+                            showServiceMenu = false
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
 
         /* ---------- TITLE ---------- */
         OutlinedTextField(
             value = title,
             onValueChange = { title = it },
-            label = { Text("Title") },
-            placeholder = { Text("Short issue summary") },
+            label = { Text("Problem title") },
+            placeholder = { Text("Short summary of the issue") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(Modifier.height(12.dp))
 
         /* ---------- DESCRIPTION ---------- */
         OutlinedTextField(
             value = description,
             onValueChange = { description = it },
-            label = { Text("Description") },
-            placeholder = { Text("Describe the issue in detail") },
+            label = { Text("Problem description") },
+            placeholder = { Text("Describe the problem in detail") },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(140.dp),
             maxLines = 6
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(Modifier.height(20.dp))
+
+        /* ---------- DATE PICKER ---------- */
+        OutlinedButton(
+            onClick = { datePickerDialog.show() },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(Icons.Default.CalendarToday, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(selectedDate)
+        }
+
+        Spacer(Modifier.height(32.dp))
 
         /* ---------- ACTIONS ---------- */
         Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+
             OutlinedButton(
                 onClick = onCancel,
                 modifier = Modifier.weight(1f)
@@ -113,36 +175,18 @@ fun RequestFormScreen(
 
             Button(
                 onClick = {
-                    if (title.isNotBlank() && description.isNotBlank()) {
+                    if (
+                        selectedService.isNotBlank() &&
+                        title.isNotBlank() &&
+                        description.isNotBlank() &&
+                        selectedDate != "Select date"
+                    ) {
                         onSubmit()
                     }
                 },
                 modifier = Modifier.weight(1f)
             ) {
-                Text("Submit")
-            }
-        }
-    }
-}
-
-/* ---------- CATEGORY SELECTOR ---------- */
-
-@Composable
-private fun CategorySelector(
-    categories: List<String>,
-    selected: String,
-    onSelect: (String) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        categories.chunked(3).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { category ->
-                    FilterChip(
-                        selected = selected == category,
-                        onClick = { onSelect(category) },
-                        label = { Text(category) }
-                    )
-                }
+                Text("Submit Request")
             }
         }
     }

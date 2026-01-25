@@ -13,11 +13,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.article.ui.theme.*
 
-/* ---------- DATA MODEL (UI ONLY) ---------- */
+/* ---------- DATA MODEL ---------- */
 
 data class ServiceRequest(
     val id: String,
@@ -28,27 +28,30 @@ data class ServiceRequest(
 )
 
 enum class RequestStatus {
-    PENDING, ACCEPTED, CANCELLED
+    PENDING,
+    ACCEPTED,
+    COMPLETED,
+    CANCELLED
 }
 
-/* ---------- MAIN SCREEN ---------- */
+/* ---------- SCREEN ---------- */
 
 @Composable
 fun RequestsScreen(
-    onCreateNew: () -> Unit = {}
+    onCreateNew: () -> Unit
 ) {
     var requests by remember {
         mutableStateOf(
             listOf(
-                ServiceRequest("1", "Bathroom pipe leakage", "Plumber", RequestStatus.PENDING, "Today"),
-                ServiceRequest("2", "Fan not working", "Electrician", RequestStatus.ACCEPTED, "Yesterday")
+                ServiceRequest("req_1", "Bathroom pipe leakage", "Plumber", RequestStatus.PENDING, "Today"),
+                ServiceRequest("req_2", "Fan not working", "Electrician", RequestStatus.ACCEPTED, "Yesterday")
             )
         )
     }
 
-    val backgroundGradient = Brush.verticalGradient(
-        colors = listOf(
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+    val background = Brush.verticalGradient(
+        listOf(
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
             MaterialTheme.colorScheme.background
         )
     )
@@ -56,15 +59,16 @@ fun RequestsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundGradient)
+            .background(background)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+
+        Column {
 
             /* ---------- HEADER ---------- */
             Text(
                 text = "My Service Requests",
-                fontSize = 22.sp,
                 style = MaterialTheme.typography.titleLarge,
+                fontSize = 22.sp,
                 modifier = Modifier.padding(16.dp)
             )
 
@@ -79,13 +83,23 @@ fun RequestsScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(requests, key = { it.id }) { request ->
+                    items(
+                        items = requests,
+                        key = { it.id }   // ✅ UNIQUE & STABLE
+                    ) { request ->
                         RequestCard(
                             request = request,
                             onCancel = {
                                 requests = requests.map {
                                     if (it.id == request.id)
                                         it.copy(status = RequestStatus.CANCELLED)
+                                    else it
+                                }
+                            },
+                            onComplete = {
+                                requests = requests.map {
+                                    if (it.id == request.id)
+                                        it.copy(status = RequestStatus.COMPLETED)
                                     else it
                                 }
                             }
@@ -103,7 +117,7 @@ fun RequestsScreen(
                 .padding(20.dp),
             containerColor = MaterialTheme.colorScheme.primary
         ) {
-            Icon(Icons.Default.Add, contentDescription = "New Request")
+            Icon(Icons.Default.Add, contentDescription = "Create request")
         }
     }
 }
@@ -113,22 +127,23 @@ fun RequestsScreen(
 @Composable
 private fun RequestCard(
     request: ServiceRequest,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    onComplete: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(14.dp),
         elevation = CardDefaults.cardElevation(4.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(Modifier.padding(16.dp)) {
 
             Text(
                 text = request.title,
-                fontSize = 16.sp,
-                style = MaterialTheme.typography.bodyLarge
+                style = MaterialTheme.typography.bodyLarge,
+                fontSize = 16.sp
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(Modifier.height(4.dp))
 
             Text(
                 text = "${request.category} • ${request.date}",
@@ -136,21 +151,34 @@ private fun RequestCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(Modifier.height(12.dp))
 
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
+                verticalAlignment = Alignment.CenterVertically
             ) {
+
                 StatusChip(request.status)
 
-                if (request.status == RequestStatus.PENDING) {
-                    Text(
-                        text = "Cancel",
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.clickable { onCancel() }
-                    )
+                when (request.status) {
+                    RequestStatus.PENDING -> {
+                        Text(
+                            text = "Cancel",
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.clickable { onCancel() }
+                        )
+                    }
+
+                    RequestStatus.ACCEPTED -> {
+                        Text(
+                            text = "Mark Completed",
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { onComplete() }
+                        )
+                    }
+
+                    else -> Unit
                 }
             }
         }
@@ -162,22 +190,11 @@ private fun RequestCard(
 @Composable
 private fun StatusChip(status: RequestStatus) {
 
-    val label: String
-    val color: androidx.compose.ui.graphics.Color
-
-    when (status) {
-        RequestStatus.PENDING -> {
-            label = "Pending"
-            color = androidx.compose.ui.graphics.Color(0xFFFFA000)
-        }
-        RequestStatus.ACCEPTED -> {
-            label = "Accepted"
-            color = androidx.compose.ui.graphics.Color(0xFF2E7D32)
-        }
-        RequestStatus.CANCELLED -> {
-            label = "Cancelled"
-            color = androidx.compose.ui.graphics.Color(0xFFB71C1C)
-        }
+    val (label, color) = when (status) {
+        RequestStatus.PENDING -> "Pending" to Color(0xFFFFA000)
+        RequestStatus.ACCEPTED -> "Accepted" to Color(0xFF2E7D32)
+        RequestStatus.COMPLETED -> "Completed" to Color(0xFF1565C0)
+        RequestStatus.CANCELLED -> "Cancelled" to Color(0xFFB71C1C)
     }
 
     Surface(
@@ -192,7 +209,6 @@ private fun StatusChip(status: RequestStatus) {
         )
     }
 }
-
 
 /* ---------- EMPTY STATE ---------- */
 
@@ -211,13 +227,13 @@ private fun EmptyRequestsState(
             text = "No service requests yet",
             fontSize = 18.sp
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             text = "Create a request to connect with local service providers",
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(Modifier.height(24.dp))
         Button(onClick = onCreateNew) {
             Text("Create Request")
         }

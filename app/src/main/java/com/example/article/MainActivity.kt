@@ -31,40 +31,66 @@ class MainActivity : ComponentActivity() {
 fun ArticleApp() {
     val navController = rememberNavController()
 
-    // UI-only login state
+    // UI-only auth state (as per your current setup)
     var isLoggedIn by remember { mutableStateOf(false) }
 
     if (!isLoggedIn) {
+
+        /* ---------- LOGIN ---------- */
         LoginScreen(
             onLoginSuccess = {
                 isLoggedIn = true
             }
         )
+
     } else {
+
+        /* ---------- MAIN APP ---------- */
         Scaffold(
             topBar = { TopBar() },
             bottomBar = { BottomBar(navController) }
         ) { innerPadding ->
+
             NavHost(
                 navController = navController,
                 startDestination = "home",
                 modifier = Modifier.padding(innerPadding)
             ) {
-                composable("home") { HomeScreen() }
-                composable("search") { SearchScreen() }
-                composable("inbox") { InboxScreen() }
+
+                /* ---------- HOME ---------- */
+                composable("home") {
+                    HomeScreen()
+                }
+
+                /* ---------- SEARCH ---------- */
+                composable("search") {
+                    SearchScreen()
+                }
+
+                /* ---------- INBOX ---------- */
+                composable("inbox") {
+                    InboxScreen()
+                }
+
+                /* ---------- PROFILE ---------- */
                 composable("profile") {
                     ProfileScreen(
-                        onLogout = { isLoggedIn = false }
-                    )
-                }
-                composable("requests") {
-                    RequestsScreen(
-                        onCreateNew = {
-                            // next screen later: request_form
+                        onLogout = {
+                            isLoggedIn = false
                         }
                     )
                 }
+
+                /* ---------- REQUESTS ---------- */
+                composable("requests") {
+                    RequestsScreen(
+                        onCreateNew = {
+                            navController.navigate("request_form")
+                        }
+                    )
+                }
+
+                /* ---------- REQUEST FORM ---------- */
                 composable("request_form") {
                     RequestFormScreen(
                         onCancel = {
@@ -76,9 +102,7 @@ fun ArticleApp() {
                     )
                 }
 
-
-
-                // ✅ THIS WAS MISSING — ADD IT
+                /* ---------- NEW POST ---------- */
                 composable("new_post") {
                     NewPostScreen(
                         onPostUploaded = {
@@ -89,7 +113,6 @@ fun ArticleApp() {
                     )
                 }
             }
-
         }
     }
 }

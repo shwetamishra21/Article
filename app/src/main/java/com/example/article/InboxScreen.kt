@@ -3,163 +3,201 @@ package com.example.article
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx. compose. ui. text. font. FontWeight
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/* ---------------- DATA ---------------- */
-
-data class MessageItem(
-    val id: Int,
-    val sender: String,
-    val lastMessage: String,
-    val time: String,
-    val unread: Boolean
-)
-
-/* ---------------- SCREEN ---------------- */
-
 @Composable
-fun InboxScreen() {
-    var messages by remember {
-        mutableStateOf(
-            listOf(
-                MessageItem(1, "Electrician Ravi", "I can come tomorrow", "10:15 AM", true),
-                MessageItem(2, "Plumber Aman", "Issue resolved 👍", "Yesterday", false)
-            )
-        )
-    }
+fun InboxScreen(
+    onCreateRequest: () -> Unit = {}
+) {
+    var selectedTab by remember { mutableStateOf(0) }
 
-    Box(
+    val backgroundGradient = Brush.verticalGradient(
+        listOf(
+            Color(0xFFE3F2FD),
+            Color(0xFFBBDEFB),
+            Color(0xFFE3F2FD)
+        )
+    )
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp)
+            .background(backgroundGradient)
     ) {
-        if (messages.isEmpty()) {
-            EmptyInbox()
+
+        /* ---------- SEGMENTED TABS ---------- */
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .background(Color.White, RoundedCornerShape(20.dp))
+                .padding(6.dp)
+        ) {
+            InboxTab(
+                icon = Icons.Default.Build,
+                label = "Services",
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                modifier = Modifier.weight(1f)
+            )
+            InboxTab(
+                icon = Icons.Default.Group,
+                label = "Members",
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        /* ---------- CONTENT ---------- */
+        if (selectedTab == 0) {
+            EmptyServiceInbox(onCreateRequest)
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item { InboxHeader() }
-                items(messages, key = { it.id }) { msg ->
-                    MessageRow(msg)
-                }
-            }
+            EmptyMemberInbox()
         }
     }
 }
 
-/* ---------------- HEADER ---------------- */
+/* ---------- TAB ---------- */
 
 @Composable
-fun InboxHeader() {
-    Text(
-        text = "Inbox",
-        style = MaterialTheme.typography.headlineSmall,
-        color = MaterialTheme.colorScheme.onBackground
-    )
-}
-
-/* ---------------- EMPTY STATE ---------------- */
-
-@Composable
-fun EmptyInbox() {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+private fun InboxTab(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .shadow(
+                elevation = if (selected) 6.dp else 0.dp,
+                shape = RoundedCornerShape(16.dp),
+                ambientColor = Color(0xFF42A5F5),
+                spotColor = Color(0xFF42A5F5)
+            )
+            .background(
+                if (selected) Color(0xFF42A5F5) else Color.Transparent,
+                RoundedCornerShape(16.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = Icons.Default.Chat,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(72.dp)
-        )
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "No conversations yet",
-            fontSize = 18.sp,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Text(
-            "When you start chatting, messages appear here",
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (selected) Color.White else Color(0xFF607D8B),
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (selected) Color.White else Color(0xFF607D8B)
+            )
+        }
     }
 }
 
-/* ---------------- MESSAGE ROW ---------------- */
+/* ---------- EMPTY SERVICE ---------- */
 
 @Composable
-fun MessageRow(message: MessageItem) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { },
-        shape = RoundedCornerShape(14.dp),
-        elevation = CardDefaults.cardElevation(4.dp)
+private fun EmptyServiceInbox(
+    onCreateRequest: () -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
     ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Card(
+            modifier = Modifier
+                .padding(24.dp)
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(8.dp)
         ) {
-            Box(
+            Column(
                 modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
-                contentAlignment = Alignment.Center
+                    .padding(28.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    message.sender.first().uppercase(),
-                    color = MaterialTheme.colorScheme.onPrimary
+                Icon(
+                    Icons.Default.Build,
+                    contentDescription = null,
+                    tint = Color(0xFF42A5F5),
+                    modifier = Modifier.size(52.dp)
                 )
-            }
 
-            Spacer(Modifier.width(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    message.sender,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    text = "No service conversations yet",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF263238)
                 )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
                 Text(
-                    message.lastMessage,
+                    text = "Once a provider accepts your request,\nyou’ll be able to chat here.",
                     fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
+                    color = Color(0xFF607D8B),
+                    textAlign = TextAlign.Center
                 )
-            }
 
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    message.time,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (message.unread) {
-                    Spacer(Modifier.height(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = onCreateRequest,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF42A5F5)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Create Service Request",
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
         }
+    }
+}
+
+/* ---------- EMPTY MEMBERS ---------- */
+
+@Composable
+private fun EmptyMemberInbox() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "No member conversations yet",
+            fontSize = 14.sp,
+            color = Color(0xFF607D8B)
+        )
     }
 }

@@ -21,62 +21,105 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.article.ui.theme.*
+import java.util.UUID
 
-/* ---------------- DATA ---------------- */
+/* ---------------- MODELS ---------------- */
 
-data class Post(
-    val id: Int,
+data class Announcement(
+    val id: String,
     val title: String,
-    val content: String,
+    val message: String,
+    val time: String
+)
+
+data class FeedPost(
+    val id: String,
     val author: String,
+    val content: String,
     val time: String,
     val likes: Int
 )
 
-/* ---------------- HOME ---------------- */
+/* ---------------- HOME SCREEN ---------------- */
 
 @Composable
 fun HomeScreen() {
-    var posts by remember {
+
+    var announcements by remember {
         mutableStateOf(
             listOf(
-                Post(1, "Welcome to Article 👋", "Your community updates will appear here.", "Admin", "2h ago", 12),
-                Post(2, "Looking for an electrician", "Anyone has a good local contact?", "Ravi", "5h ago", 5)
+                Announcement(
+                    id = "ann_1",
+                    title = "Water Supply Notice 🚰",
+                    message = "Water supply will be unavailable tomorrow from 10 AM – 1 PM.",
+                    time = "1h ago"
+                )
             )
         )
     }
 
-    Box(
+    var posts by remember {
+        mutableStateOf(
+            listOf(
+                FeedPost("post_1", "Ravi", "Anyone knows a good electrician nearby?", "2h ago", 4),
+                FeedPost("post_2", "You", "Evening walks are so peaceful lately 🌆", "5h ago", 9)
+            )
+        )
+    }
+
+    val backgroundGradient = Brush.verticalGradient(
+        listOf(
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+            MaterialTheme.colorScheme.background
+        )
+    )
+
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.background,
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                    )
-                )
-            )
+            .background(backgroundGradient),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 96.dp)
     ) {
-        LazyColumn(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(bottom = 80.dp)
-        ) {
 
-            item { HomeHeader(username = "User") }
+        /* ---------- HEADER ---------- */
+        item(key = "header") {
+            HomeHeader()
+        }
 
-            items(posts, key = { it.id }) { post ->
-                PostCard(
-                    post = post,
-                    onLike = {
-                        posts = posts.map {
-                            if (it.id == post.id) it.copy(likes = it.likes + 1) else it
-                        }
-                    }
-                )
+        /* ---------- ANNOUNCEMENTS (PINNED) ---------- */
+        if (announcements.isNotEmpty()) {
+            item(key = "ann_title") {
+                SectionTitle("Announcements")
             }
+
+            items(
+                items = announcements,
+                key = { it.id } // ✅ stable
+            ) { announcement ->
+                AnnouncementCard(announcement)
+            }
+        }
+
+        /* ---------- POSTS ---------- */
+        item(key = "post_title") {
+            SectionTitle("Community Posts")
+        }
+
+        items(
+            items = posts,
+            key = { it.id } // ✅ stable
+        ) { post ->
+            PostCard(
+                post = post,
+                onLike = {
+                    posts = posts.map {
+                        if (it.id == post.id)
+                            it.copy(likes = it.likes + 1)
+                        else it
+                    }
+                }
+            )
         }
     }
 }
@@ -84,7 +127,7 @@ fun HomeScreen() {
 /* ---------------- HEADER ---------------- */
 
 @Composable
-fun HomeHeader(username: String) {
+private fun HomeHeader() {
     val gradient = Brush.horizontalGradient(
         listOf(
             MaterialTheme.colorScheme.primary,
@@ -95,26 +138,67 @@ fun HomeHeader(username: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(gradient, RoundedCornerShape(16.dp))
+            .padding(16.dp)
+            .background(gradient, RoundedCornerShape(20.dp))
             .padding(20.dp)
     ) {
         Column {
             Text(
-                text = "Welcome 👋",
+                text = "Good day 👋",
                 color = MaterialTheme.colorScheme.onPrimary,
                 fontSize = 14.sp
             )
             Text(
-                text = username,
+                text = "Your Neighborhood",
                 color = MaterialTheme.colorScheme.onPrimary,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
-                text = "Stay connected with your neighborhood",
+                text = "Stay updated with your community",
                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
                 fontSize = 13.sp
+            )
+        }
+    }
+}
+
+/* ---------------- SECTION TITLE ---------------- */
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        fontSize = 15.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(horizontal = 16.dp)
+    )
+}
+
+/* ---------------- ANNOUNCEMENT CARD ---------------- */
+
+@Composable
+private fun AnnouncementCard(item: Announcement) {
+    Card(
+        modifier = Modifier
+            .padding(horizontal = 16.dp)
+            .fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        )
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(item.title, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Text(item.message, fontSize = 14.sp)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                item.time,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -123,19 +207,18 @@ fun HomeHeader(username: String) {
 /* ---------------- POST CARD ---------------- */
 
 @Composable
-fun PostCard(
-    post: Post,
+private fun PostCard(
+    post: FeedPost,
     onLike: () -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
     var liked by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable { expanded = !expanded },
+            .padding(horizontal = 16.dp)
+            .fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(6.dp)
+        elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Column(Modifier.padding(16.dp)) {
 
@@ -158,40 +241,53 @@ fun PostCard(
 
                 Column {
                     Text(post.author, fontWeight = FontWeight.Bold)
-                    Text(post.time, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        post.time,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
             Spacer(Modifier.height(10.dp))
 
-            Text(post.title, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
             Text(
                 post.content,
-                maxLines = if (expanded) Int.MAX_VALUE else 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
 
             Spacer(Modifier.height(8.dp))
 
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = {
                     liked = !liked
                     if (liked) onLike()
                 }) {
                     Icon(
-                        imageVector = if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        imageVector = if (liked)
+                            Icons.Filled.Favorite
+                        else
+                            Icons.Filled.FavoriteBorder,
                         contentDescription = null,
-                        tint = if (liked) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface
+                        tint = if (liked)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurface
                     )
                 }
 
-                IconButton(onClick = {}) {
+                IconButton(onClick = { }) {
                     Icon(Icons.AutoMirrored.Filled.Comment, contentDescription = null)
                 }
 
-                Text("${post.likes}", modifier = Modifier.align(Alignment.CenterVertically))
+                Spacer(Modifier.width(6.dp))
+
+                Text(
+                    "${post.likes}",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

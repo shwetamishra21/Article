@@ -20,8 +20,10 @@ data class BottomNavItem(
 @Composable
 fun BottomBar(navController: NavController) {
 
+    // 🔹 SEARCH added here
     val items = listOf(
         BottomNavItem("Home", "home", Icons.Default.Home),
+        BottomNavItem("Search", "search", Icons.Default.Search),
         BottomNavItem("Requests", "requests", Icons.Default.Build),
         BottomNavItem("Post", "new_post", Icons.Default.AddCircle),
         BottomNavItem("Inbox", "inbox", Icons.Default.Chat),
