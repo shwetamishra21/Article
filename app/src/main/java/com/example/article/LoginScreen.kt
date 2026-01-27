@@ -15,15 +15,23 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.article.ui.theme.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginScreen(onLoginSuccess: () -> Unit) {
+fun LoginScreen(
+    onLoginSuccess: () -> Unit
+) {
+    val auth = remember { FirebaseAuth.getInstance() }
+    val firestore = remember { FirebaseFirestore.getInstance() }
+
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     var signUp by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
 
     val bgGradient = Brush.verticalGradient(
         listOf(
@@ -71,7 +79,8 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                         onValueChange = { email = it },
                         label = { Text("Email") },
                         leadingIcon = { Icon(Icons.Default.Email, null) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
                     )
 
                     OutlinedTextField(
@@ -91,17 +100,85 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                         visualTransformation =
                             if (showPassword) VisualTransformation.None
                             else PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
                     )
 
+                    error?.let {
+                        Text(
+                            text = it,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 13.sp
+                        )
+                    }
+
                     Button(
-                        onClick = { onLoginSuccess() },
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        enabled = !loading,
+                        onClick = {
+                            error = null
+
+                            if (email.isBlank() || password.isBlank()) {
+                                error = "Please fill all fields"
+                                return@Button
+                            }
+
+                            loading = true
+
+                            if (signUp) {
+                                // 🔹 SIGN UP
+                                auth.createUserWithEmailAndPassword(email, password)
+                                    .addOnSuccessListener { result ->
+                                        val user = result.user
+                                        if (user == null) {
+                                            loading = false
+                                            error = "Signup failed"
+                                            return@addOnSuccessListener
+                                        }
+
+                                        val userDoc = mapOf(
+                                            "email" to user.email,
+                                            "role" to "member", // ✅ DEFAULT ROLE
+                                            "createdAt" to System.currentTimeMillis()
+                                        )
+
+                                        firestore.collection("users")
+                                            .document(user.uid)
+                                            .set(userDoc)
+                                            .addOnSuccessListener {
+                                                loading = false
+                                                onLoginSuccess()
+                                            }
+                                            .addOnFailureListener {
+                                                // 🔒 FAIL-SAFE: do not block login
+                                                loading = false
+                                                onLoginSuccess()
+                                            }
+                                    }
+                                    .addOnFailureListener {
+                                        loading = false
+                                        error = it.localizedMessage
+                                    }
+
+                            } else {
+                                // 🔹 LOGIN
+                                auth.signInWithEmailAndPassword(email, password)
+                                    .addOnSuccessListener {
+                                        loading = false
+                                        onLoginSuccess()
+                                    }
+                                    .addOnFailureListener {
+                                        loading = false
+                                        error = it.localizedMessage
+                                    }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Icon(
-                            if (signUp) Icons.Default.PersonAdd
-                            else Icons.Default.Login,
+                            if (signUp) Icons.Default.PersonAdd else Icons.Default.Login,
                             null
                         )
                         Spacer(Modifier.width(8.dp))

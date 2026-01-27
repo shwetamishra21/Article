@@ -12,10 +12,16 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.article.ui.theme.ArticleTheme
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 🔹 Firebase init (SAFE)
+        FirebaseApp.initializeApp(this)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
@@ -31,12 +37,30 @@ class MainActivity : ComponentActivity() {
 fun ArticleApp() {
     val navController = rememberNavController()
 
-    // UI-only auth state (as per your current setup)
-    var isLoggedIn by remember { mutableStateOf(false) }
+    val auth = remember { FirebaseAuth.getInstance() }
+    val db = remember { FirebaseFirestore.getInstance() }
+
+    var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
+    var userRole by remember { mutableStateOf("member") } // default safe role
+
+    // 🔹 Fetch role once after login
+    LaunchedEffect(isLoggedIn) {
+        val user = auth.currentUser
+        if (user != null) {
+            db.collection("users")
+                .document(user.uid)
+                .get()
+                .addOnSuccessListener { doc ->
+                    userRole = doc.getString("role") ?: "member"
+                }
+                .addOnFailureListener {
+                    userRole = "member" // fail-safe
+                }
+        }
+    }
 
     if (!isLoggedIn) {
 
-        /* ---------- LOGIN ---------- */
         LoginScreen(
             onLoginSuccess = {
                 isLoggedIn = true
@@ -45,7 +69,6 @@ fun ArticleApp() {
 
     } else {
 
-        /* ---------- MAIN APP ---------- */
         Scaffold(
             topBar = { TopBar() },
             bottomBar = { BottomBar(navController) }
@@ -57,31 +80,27 @@ fun ArticleApp() {
                 modifier = Modifier.padding(innerPadding)
             ) {
 
-                /* ---------- HOME ---------- */
                 composable("home") {
                     HomeScreen()
                 }
 
-                /* ---------- SEARCH ---------- */
                 composable("search") {
                     SearchScreen()
                 }
 
-                /* ---------- INBOX ---------- */
                 composable("inbox") {
                     InboxScreen()
                 }
 
-                /* ---------- PROFILE ---------- */
                 composable("profile") {
                     ProfileScreen(
                         onLogout = {
+                            auth.signOut()
                             isLoggedIn = false
                         }
                     )
                 }
 
-                /* ---------- REQUESTS ---------- */
                 composable("requests") {
                     RequestsScreen(
                         onCreateNew = {
@@ -90,19 +109,13 @@ fun ArticleApp() {
                     )
                 }
 
-                /* ---------- REQUEST FORM ---------- */
                 composable("request_form") {
                     RequestFormScreen(
-                        onCancel = {
-                            navController.popBackStack()
-                        },
-                        onSubmit = {
-                            navController.popBackStack()
-                        }
+                        onCancel = { navController.popBackStack() },
+                        onSubmit = { navController.popBackStack() }
                     )
                 }
 
-                /* ---------- NEW POST ---------- */
                 composable("new_post") {
                     NewPostScreen(
                         onPostUploaded = {
