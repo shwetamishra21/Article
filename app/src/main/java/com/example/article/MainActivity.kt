@@ -61,7 +61,7 @@ fun ArticleApp() {
             ) {
 
                 composable("home") {
-                    HomeScreen(role = userRole)
+                    HomeScreen()
                 }
 
                 composable("search") {

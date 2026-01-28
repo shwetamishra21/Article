@@ -1,8 +1,5 @@
 package com.example.article
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,70 +11,55 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.font.FontWeight
-import coil.compose.AsyncImage
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.article.feed.FeedItem
+import com.example.article.feed.HomeViewModel
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import java.util.UUID
 
-enum class PostType {
-    POST, ANNOUNCEMENT
-}
+enum class PostType { POST, ANNOUNCEMENT }
 
 @Composable
 fun NewPostScreen(
-    onPostUploaded: () -> Unit
+    onPostUploaded: () -> Unit,
+    viewModel: HomeViewModel = viewModel()
 ) {
+    val auth = FirebaseAuth.getInstance()
+    val firestore = FirebaseFirestore.getInstance()
+
     var selectedType by remember { mutableStateOf(PostType.POST) }
-    var caption by remember { mutableStateOf("") }
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    var content by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
 
-    val imagePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri -> imageUri = uri }
-
-    val backgroundGradient = Brush.verticalGradient(
+    val bgGradient = Brush.verticalGradient(
         listOf(
-            Color(0xFFE3F2FD),
-            Color(0xFFBBDEFB),
-            Color(0xFFE3F2FD)
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+            MaterialTheme.colorScheme.background
         )
     )
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundGradient)
+            .background(bgGradient)
+            .padding(16.dp)
     ) {
 
-        /* ---------- HEADER ---------- */
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp)
-        ) {
-            Text(
-                text = "Create",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF0D47A1)
-            )
-            Text(
-                text = "Share with your neighbourhood",
-                fontSize = 14.sp,
-                color = Color(0xFF546E7A)
-            )
-        }
+        Text("Create", fontSize = 22.sp)
 
         Spacer(Modifier.height(12.dp))
 
         /* ---------- TYPE TOGGLE ---------- */
         Row(
             modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .background(Color.White, RoundedCornerShape(14.dp))
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
                 .padding(6.dp)
         ) {
             PostTypeTab(
@@ -94,101 +76,116 @@ fun NewPostScreen(
             )
         }
 
+        Spacer(Modifier.height(16.dp))
+
+        if (selectedType == PostType.ANNOUNCEMENT) {
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                placeholder = { Text("Announcement title") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+
+        OutlinedTextField(
+            value = content,
+            onValueChange = { content = it },
+            placeholder = {
+                Text(
+                    if (selectedType == PostType.POST)
+                        "Write something for your neighbors…"
+                    else
+                        "Write announcement details…"
+                )
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 120.dp)
+        )
+
+        error?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+        }
+
         Spacer(Modifier.height(20.dp))
 
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-
-            /* ---------- IMAGE (POST ONLY) ---------- */
-            if (selectedType == PostType.POST) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
-                        .clickable { imagePicker.launch("image/*") },
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(4.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (imageUri != null) {
-                            AsyncImage(
-                                model = imageUri,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    Icons.Default.Image,
-                                    contentDescription = null,
-                                    tint = Color(0xFF42A5F5),
-                                    modifier = Modifier.size(42.dp)
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    "Add photo",
-                                    color = Color(0xFF546E7A),
-                                    fontSize = 14.sp
-                                )
-                            }
-                        }
-                    }
+        /* ---------- SUBMIT ---------- */
+        Button(
+            enabled = !loading && content.isNotBlank(),
+            onClick = {
+                val user = auth.currentUser ?: run {
+                    error = "Not authenticated"
+                    return@Button
                 }
-            }
 
-            /* ---------- TEXT ---------- */
-            OutlinedTextField(
-                value = caption,
-                onValueChange = { caption = it },
-                placeholder = {
-                    Text(
-                        if (selectedType == PostType.POST)
-                            "Write something for your neighbours…"
-                        else
-                            "Write an announcement…"
+                if (selectedType == PostType.ANNOUNCEMENT && title.isBlank()) {
+                    error = "Title required"
+                    return@Button
+                }
+
+                loading = true
+                error = null
+
+                val id = UUID.randomUUID().toString()
+                val timestamp = System.currentTimeMillis()
+
+                /* ⚡ OPTIMISTIC UI */
+                if (selectedType == PostType.POST) {
+                    viewModel.addOptimistic(
+                        FeedItem.Post(
+                            id = id,
+                            author = user.email ?: "You",
+                            content = content,
+                            time = timestamp,
+                            likes = 0
+                        )
                     )
-                },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 4,
-                shape = RoundedCornerShape(14.dp)
+                } else {
+                    viewModel.addOptimistic(
+                        FeedItem.Announcement(
+                            id = id,
+                            title = title,
+                            message = content,
+                            time = timestamp
+                        )
+                    )
+                }
+
+                val postData = mapOf(
+                    "type" to selectedType.name.lowercase(),
+                    "content" to content,
+                    "title" to title,
+                    "authorName" to (user.email ?: "User"),
+                    "authorId" to user.uid,
+                    "likes" to 0,
+                    "createdAt" to timestamp
+                )
+
+                firestore.collection("posts")
+                    .document(id)
+                    .set(postData)
+                    .addOnCompleteListener {
+                        loading = false
+                        onPostUploaded()
+                    }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Icon(
+                if (selectedType == PostType.POST)
+                    Icons.Default.Image
+                else
+                    Icons.Default.Campaign,
+                contentDescription = null
             )
-
-            Spacer(Modifier.height(12.dp))
-
-            /* ---------- SUBMIT ---------- */
-            Button(
-                onClick = onPostUploaded,
-                enabled = caption.isNotBlank(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF42A5F5)
-                )
-            ) {
-                Icon(
-                    if (selectedType == PostType.POST)
-                        Icons.Default.Image
-                    else
-                        Icons.Default.Campaign,
-                    contentDescription = null
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = if (selectedType == PostType.POST)
-                        "Post"
-                    else
-                        "Publish Announcement",
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 15.sp
-                )
-            }
+            Spacer(Modifier.width(8.dp))
+            Text(if (selectedType == PostType.POST) "Post" else "Publish Announcement")
         }
     }
 }
@@ -204,24 +201,23 @@ private fun PostTypeTab(
 ) {
     Box(
         modifier = modifier
-            .shadow(
-                elevation = if (selected) 6.dp else 0.dp,
-                shape = RoundedCornerShape(12.dp),
-                ambientColor = Color(0xFF42A5F5),
-                spotColor = Color(0xFF42A5F5)
-            )
+            .clickable(onClick = onClick)
             .background(
-                if (selected) Color(0xFF42A5F5) else Color.Transparent,
+                if (selected)
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                else
+                    MaterialTheme.colorScheme.surface,
                 RoundedCornerShape(12.dp)
             )
-            .clickable(onClick = onClick)
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            color = if (selected) Color.White else Color(0xFF1E88E5),
-            fontWeight = FontWeight.Medium
+            color = if (selected)
+                MaterialTheme.colorScheme.primary
+            else
+                MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
