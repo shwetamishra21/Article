@@ -14,15 +14,12 @@ import androidx.navigation.compose.rememberNavController
 import com.example.article.ui.theme.ArticleTheme
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 🔹 Firebase init (SAFE)
         FirebaseApp.initializeApp(this)
-
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         setContent {
@@ -36,33 +33,16 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun ArticleApp() {
     val navController = rememberNavController()
-
     val auth = remember { FirebaseAuth.getInstance() }
-    val db = remember { FirebaseFirestore.getInstance() }
 
     var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
-    var userRole by remember { mutableStateOf("member") } // default safe role
-
-    // 🔹 Fetch role once after login
-    LaunchedEffect(isLoggedIn) {
-        val user = auth.currentUser
-        if (user != null) {
-            db.collection("users")
-                .document(user.uid)
-                .get()
-                .addOnSuccessListener { doc ->
-                    userRole = doc.getString("role") ?: "member"
-                }
-                .addOnFailureListener {
-                    userRole = "member" // fail-safe
-                }
-        }
-    }
+    var userRole by remember { mutableStateOf("member") } // fail-safe default
 
     if (!isLoggedIn) {
 
         LoginScreen(
-            onLoginSuccess = {
+            onLoginSuccess = { role ->
+                userRole = role
                 isLoggedIn = true
             }
         )
@@ -81,7 +61,7 @@ fun ArticleApp() {
             ) {
 
                 composable("home") {
-                    HomeScreen()
+                    HomeScreen(role = userRole)
                 }
 
                 composable("search") {
@@ -94,11 +74,13 @@ fun ArticleApp() {
 
                 composable("profile") {
                     ProfileScreen(
+                        role = userRole,
                         onLogout = {
                             auth.signOut()
                             isLoggedIn = false
                         }
                     )
+
                 }
 
                 composable("requests") {

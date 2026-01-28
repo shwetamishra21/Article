@@ -15,16 +15,15 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.article.Repository.UserRepository
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
-    onLoginSuccess: () -> Unit
+    onLoginSuccess: (role: String) -> Unit
 ) {
     val auth = remember { FirebaseAuth.getInstance() }
-    val firestore = remember { FirebaseFirestore.getInstance() }
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -124,48 +123,29 @@ fun LoginScreen(
 
                             loading = true
 
-                            if (signUp) {
-                                // 🔹 SIGN UP
-                                auth.createUserWithEmailAndPassword(email, password)
-                                    .addOnSuccessListener { result ->
-                                        val user = result.user
-                                        if (user == null) {
-                                            loading = false
-                                            error = "Signup failed"
-                                            return@addOnSuccessListener
-                                        }
-
-                                        val userDoc = mapOf(
-                                            "email" to user.email,
-                                            "role" to "member", // ✅ DEFAULT ROLE
-                                            "createdAt" to System.currentTimeMillis()
-                                        )
-
-                                        firestore.collection("users")
-                                            .document(user.uid)
-                                            .set(userDoc)
-                                            .addOnSuccessListener {
-                                                loading = false
-                                                onLoginSuccess()
-                                            }
-                                            .addOnFailureListener {
-                                                // 🔒 FAIL-SAFE: do not block login
-                                                loading = false
-                                                onLoginSuccess()
-                                            }
+                            val onAuthSuccess = {
+                                UserRepository.ensureUserProfile(
+                                    onComplete = { role ->
+                                        loading = false
+                                        onLoginSuccess(role)
+                                    },
+                                    onError = {
+                                        loading = false
+                                        onLoginSuccess("member")
                                     }
+                                )
+                            }
+
+                            if (signUp) {
+                                auth.createUserWithEmailAndPassword(email, password)
+                                    .addOnSuccessListener { onAuthSuccess() }
                                     .addOnFailureListener {
                                         loading = false
                                         error = it.localizedMessage
                                     }
-
                             } else {
-                                // 🔹 LOGIN
                                 auth.signInWithEmailAndPassword(email, password)
-                                    .addOnSuccessListener {
-                                        loading = false
-                                        onLoginSuccess()
-                                    }
+                                    .addOnSuccessListener { onAuthSuccess() }
                                     .addOnFailureListener {
                                         loading = false
                                         error = it.localizedMessage

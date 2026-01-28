@@ -1,32 +1,48 @@
 package com.example.article.Repository
 
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.tasks.await
 
 object UserRepository {
 
+    private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
 
-    suspend fun createUserIfMissing(
-        uid: String,
-        email: String,
-        role: String = "member"
+    fun ensureUserProfile(
+        onComplete: (String) -> Unit,
+        onError: () -> Unit = {}
     ) {
-        val ref = db.collection("users").document(uid)
-        val snapshot = ref.get().await()
-
-        if (!snapshot.exists()) {
-            val user = mapOf(
-                "email" to email,
-                "role" to role,
-                "createdAt" to System.currentTimeMillis()
-            )
-            ref.set(user).await()
+        val user = auth.currentUser ?: run {
+            onError()
+            return
         }
-    }
 
-    suspend fun getUserRole(uid: String): String {
-        val snapshot = db.collection("users").document(uid).get().await()
-        return snapshot.getString("role") ?: "member"
+        val ref = db.collection("users").document(user.uid)
+
+        ref.get()
+            .addOnSuccessListener { doc ->
+                if (doc.exists()) {
+                    val role = doc.getString("role") ?: "member"
+                    onComplete(role)
+                } else {
+                    val data = mapOf(
+                        "uid" to user.uid,
+                        "email" to user.email,
+                        "role" to "member",
+                        "name" to "",
+                        "bio" to "",
+                        "photoUrl" to "",
+                        "neighbourhoodId" to "",
+                        "createdAt" to System.currentTimeMillis()
+                    )
+
+                    ref.set(data)
+                        .addOnSuccessListener { onComplete("member") }
+                        .addOnFailureListener { onComplete("member") } // fail-safe
+                }
+            }
+            .addOnFailureListener {
+                onComplete("member") // never crash UI
+            }
     }
 }

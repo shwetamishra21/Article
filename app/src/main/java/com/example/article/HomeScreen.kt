@@ -1,7 +1,6 @@
 package com.example.article
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -43,16 +42,18 @@ data class FeedPost(
 /* ---------------- HOME SCREEN ---------------- */
 
 @Composable
-fun HomeScreen() {
+fun HomeScreen(
+    role: String = "member" // ✅ SAFE DEFAULT
+) {
 
     var announcements by remember {
         mutableStateOf(
             listOf(
                 Announcement(
-                    id = "ann_1",
-                    title = "Water Supply Notice 🚰",
-                    message = "Water supply will be unavailable tomorrow from 10 AM – 1 PM.",
-                    time = "1h ago"
+                    UUID.randomUUID().toString(),
+                    "Water Supply Notice 🚰",
+                    "Water supply will be unavailable tomorrow from 10 AM – 1 PM.",
+                    "1h ago"
                 )
             )
         )
@@ -61,8 +62,8 @@ fun HomeScreen() {
     var posts by remember {
         mutableStateOf(
             listOf(
-                FeedPost("post_1", "Ravi", "Anyone knows a good electrician nearby?", "2h ago", 4),
-                FeedPost("post_2", "You", "Evening walks are so peaceful lately 🌆", "5h ago", 9)
+                FeedPost(UUID.randomUUID().toString(), "Ravi", "Anyone knows a good electrician nearby?", "2h ago", 4),
+                FeedPost(UUID.randomUUID().toString(), "You", "Evening walks are so peaceful lately 🌆", "5h ago", 9)
             )
         )
     }
@@ -83,32 +84,48 @@ fun HomeScreen() {
     ) {
 
         /* ---------- HEADER ---------- */
-        item(key = "header") {
+        item {
             HomeHeader()
         }
 
-        /* ---------- ANNOUNCEMENTS (PINNED) ---------- */
+        /* ---------- ADMIN ONLY (future use) ---------- */
+        if (role == "admin") {
+            item {
+                SectionTitle("Admin Controls")
+            }
+
+            item {
+                Text(
+                    text = "You are viewing admin privileges",
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        /* ---------- ANNOUNCEMENTS ---------- */
         if (announcements.isNotEmpty()) {
-            item(key = "ann_title") {
+            item {
                 SectionTitle("Announcements")
             }
 
             items(
-                items = announcements,
-                key = { it.id } // ✅ stable
+                announcements,
+                key = { it.id }
             ) { announcement ->
                 AnnouncementCard(announcement)
             }
         }
 
         /* ---------- POSTS ---------- */
-        item(key = "post_title") {
+        item {
             SectionTitle("Community Posts")
         }
 
         items(
-            items = posts,
-            key = { it.id } // ✅ stable
+            posts,
+            key = { it.id }
         ) { post ->
             PostCard(
                 post = post,
@@ -265,15 +282,8 @@ private fun PostCard(
                     if (liked) onLike()
                 }) {
                     Icon(
-                        imageVector = if (liked)
-                            Icons.Filled.Favorite
-                        else
-                            Icons.Filled.FavoriteBorder,
-                        contentDescription = null,
-                        tint = if (liked)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurface
+                        imageVector = if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = null
                     )
                 }
 

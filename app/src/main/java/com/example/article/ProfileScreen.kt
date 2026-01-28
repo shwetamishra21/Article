@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import java.util.UUID
 
-/* ---------------- MODEL (KEY SAFE) ---------------- */
+/* ---------------- MODEL ---------------- */
 
 data class MyPost(
     val id: String,
@@ -43,6 +43,7 @@ data class MyPost(
 
 @Composable
 fun ProfileScreen(
+    role: String = "member", // ✅ ROLE READY
     onLogout: () -> Unit
 ) {
     var name by remember { mutableStateOf("User") }
@@ -151,6 +152,26 @@ fun ProfileScreen(
                     )
                 }
 
+                Spacer(Modifier.height(12.dp))
+
+                // 🔹 ROLE BADGE (NON-INTRUSIVE)
+                AssistChip(
+                    onClick = {},
+                    label = {
+                        Text(
+                            if (role == "admin") "Admin Account" else "Member Account",
+                            fontSize = 12.sp
+                        )
+                    },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor =
+                            if (role == "admin")
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            else
+                                MaterialTheme.colorScheme.surfaceVariant
+                    )
+                )
+
                 Spacer(Modifier.height(20.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -176,7 +197,7 @@ fun ProfileScreen(
             )
         }
 
-        /* ---------- MY POSTS LIST (KEY SAFE) ---------- */
+        /* ---------- MY POSTS (KEY SAFE) ---------- */
         items(
             items = myPosts,
             key = { it.id }
@@ -229,15 +250,11 @@ private fun MyPostCard(
                 }) {
                     Icon(
                         imageVector = if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                        contentDescription = null,
-                        tint = if (liked)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurface
+                        contentDescription = null
                     )
                 }
 
-                IconButton(onClick = { }) {
+                IconButton(onClick = {}) {
                     Icon(Icons.AutoMirrored.Filled.Comment, contentDescription = null)
                 }
 
