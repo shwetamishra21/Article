@@ -29,6 +29,7 @@ object FeedRepository {
                     author = doc.getString("authorName") ?: "Unknown",
                     content = doc.getString("content") ?: "",
                     time = doc.getLong("createdAt") ?: 0L,
+
                     likes = (doc.getLong("likes") ?: 0L).toInt(),
                     commentCount = (doc.getLong("commentCount") ?: 0L).toInt()
                 )

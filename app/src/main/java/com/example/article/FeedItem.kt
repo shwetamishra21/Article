@@ -7,6 +7,7 @@ sealed class FeedItem {
         val author: String,
         val content: String,
         val likes: Int,
+
         val commentCount: Int,
         val time: Long
     ) : FeedItem()

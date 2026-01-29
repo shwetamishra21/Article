@@ -14,6 +14,7 @@ object AuthRepository {
     suspend fun register(email: String, password: String): String {
         val result = auth.createUserWithEmailAndPassword(email, password).await()
         return result.user?.uid ?: throw Exception("User creation failed")
+
     }
 
     fun logout() {
