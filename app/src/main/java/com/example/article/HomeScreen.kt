@@ -21,7 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.article.feed.FeedItem
+import com.example.article.FeedItem
 import com.example.article.feed.HomeViewModel
 
 @Composable
@@ -38,8 +38,9 @@ fun HomeScreen(
         )
     )
 
+    // Attach realtime listener once
     LaunchedEffect(Unit) {
-        viewModel.loadFeed(reset = true)
+        viewModel.loadFeed()
     }
 
     LazyColumn(
@@ -65,18 +66,35 @@ fun HomeScreen(
             }
         }
 
+        if (!loading && feed.isEmpty()) {
+            item {
+                Text(
+                    text = "No posts yet",
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         items(
             items = feed,
-            key = { item ->
-                when (item) {
-                    is FeedItem.Post -> item.id
-                    is FeedItem.Announcement -> item.id
+            key = {
+                when (it) {
+                    is FeedItem.Post -> it.id
+                    is FeedItem.Announcement -> it.id
                 }
             }
         ) { item ->
             when (item) {
                 is FeedItem.Announcement -> AnnouncementCard(item)
                 is FeedItem.Post -> PostCard(item)
+            }
+        }
+
+        // Pagination trigger
+        item {
+            LaunchedEffect(feed.size) {
+                viewModel.loadMore()
             }
         }
     }
@@ -197,7 +215,11 @@ private fun PostCard(item: FeedItem.Post) {
 
                 Spacer(Modifier.width(6.dp))
 
-                Text("${item.likes}", fontSize = 13.sp)
+                Text(
+                    text = "${item.commentCount}",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

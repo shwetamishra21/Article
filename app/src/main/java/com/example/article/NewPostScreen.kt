@@ -15,7 +15,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.article.feed.FeedItem
+import com.example.article.FeedItem
 import com.example.article.feed.HomeViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -52,7 +52,6 @@ fun NewPostScreen(
     ) {
 
         Text("Create", fontSize = 22.sp)
-
         Spacer(Modifier.height(12.dp))
 
         /* ---------- TYPE TOGGLE ---------- */
@@ -78,6 +77,7 @@ fun NewPostScreen(
 
         Spacer(Modifier.height(16.dp))
 
+        /* ---------- ANNOUNCEMENT TITLE ---------- */
         if (selectedType == PostType.ANNOUNCEMENT) {
             OutlinedTextField(
                 value = title,
@@ -89,6 +89,7 @@ fun NewPostScreen(
             Spacer(Modifier.height(12.dp))
         }
 
+        /* ---------- CONTENT ---------- */
         OutlinedTextField(
             value = content,
             onValueChange = { content = it },
@@ -115,14 +116,20 @@ fun NewPostScreen(
         /* ---------- SUBMIT ---------- */
         Button(
             enabled = !loading && content.isNotBlank(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(16.dp),
             onClick = {
-                val user = auth.currentUser ?: run {
+
+                val user = auth.currentUser
+                if (user == null) {
                     error = "Not authenticated"
                     return@Button
                 }
 
                 if (selectedType == PostType.ANNOUNCEMENT && title.isBlank()) {
-                    error = "Title required"
+                    error = "Title required for announcement"
                     return@Button
                 }
 
@@ -132,28 +139,34 @@ fun NewPostScreen(
                 val id = UUID.randomUUID().toString()
                 val timestamp = System.currentTimeMillis()
 
-                /* ⚡ OPTIMISTIC UI */
-                if (selectedType == PostType.POST) {
-                    viewModel.addOptimistic(
-                        FeedItem.Post(
-                            id = id,
-                            author = user.email ?: "You",
-                            content = content,
-                            time = timestamp,
-                            likes = 0
+                /* ---------- OPTIMISTIC UI ---------- */
+                when (selectedType) {
+                    PostType.POST -> {
+                        viewModel.addOptimistic(
+                            FeedItem.Post(
+                                id = id,
+                                author = user.email ?: "You",
+                                content = content,
+                                time = timestamp,
+                                likes = 0,
+                                commentCount = 0
+                            )
                         )
-                    )
-                } else {
-                    viewModel.addOptimistic(
-                        FeedItem.Announcement(
-                            id = id,
-                            title = title,
-                            message = content,
-                            time = timestamp
+                    }
+
+                    PostType.ANNOUNCEMENT -> {
+                        viewModel.addOptimistic(
+                            FeedItem.Announcement(
+                                id = id,
+                                title = title,
+                                message = content,
+                                time = timestamp
+                            )
                         )
-                    )
+                    }
                 }
 
+                /* ---------- FIRESTORE WRITE ---------- */
                 val postData = mapOf(
                     "type" to selectedType.name.lowercase(),
                     "content" to content,
@@ -161,6 +174,7 @@ fun NewPostScreen(
                     "authorName" to (user.email ?: "User"),
                     "authorId" to user.uid,
                     "likes" to 0,
+                    "commentCount" to 0,
                     "createdAt" to timestamp
                 )
 
@@ -171,11 +185,7 @@ fun NewPostScreen(
                         loading = false
                         onPostUploaded()
                     }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(16.dp)
+            }
         ) {
             Icon(
                 if (selectedType == PostType.POST)

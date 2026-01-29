@@ -1,16 +1,14 @@
 package com.example.article.feed
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
+import com. example. article. FeedItem
 
 class HomeViewModel : ViewModel() {
 
-    private val db = FirebaseFirestore.getInstance()
+    private val firestore = FirebaseFirestore.getInstance()
 
     private val _feed = MutableStateFlow<List<FeedItem>>(emptyList())
     val feed: StateFlow<List<FeedItem>> = _feed
@@ -18,59 +16,96 @@ class HomeViewModel : ViewModel() {
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading
 
-    private var lastSnapshot = null as com.google.firebase.firestore.DocumentSnapshot?
-    private val PAGE_SIZE = 10
+    private var lastVisible: DocumentSnapshot? = null
+    private var listener: ListenerRegistration? = null
 
-    fun loadFeed(reset: Boolean = false) {
-        if (_loading.value) return
+    private val PAGE_SIZE = 20
+
+    /* ---------- REALTIME INITIAL LOAD ---------- */
+
+    fun loadFeed() {
+        if (listener != null) return
 
         _loading.value = true
 
-        var query = db.collection("posts")
+        listener = firestore.collection("posts")
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .limit(PAGE_SIZE.toLong())
-
-        if (!reset && lastSnapshot != null) {
-            query = query.startAfter(lastSnapshot!!)
-        }
-
-        query.get()
-            .addOnSuccessListener { snapshot ->
-                if (snapshot.documents.isNotEmpty()) {
-                    lastSnapshot = snapshot.documents.last()
+            .addSnapshotListener { snapshot, error ->
+                if (snapshot == null || error != null) {
+                    _loading.value = false
+                    return@addSnapshotListener
                 }
 
-                val newItems = snapshot.documents.mapNotNull { doc ->
-                    when (doc.getString("type")) {
-                        "announcement" -> FeedItem.Announcement(
-                            id = doc.id,
-                            title = doc.getString("title") ?: "Announcement",
-                            message = doc.getString("content") ?: "",
-                            time = doc.getLong("createdAt") ?: 0L
-                        )
-                        "post" -> FeedItem.Post(
-                            id = doc.id,
-                            author = doc.getString("author") ?: "User",
-                            content = doc.getString("content") ?: "",
-                            time = doc.getLong("createdAt") ?: 0L,
-                            likes = (doc.getLong("likes") ?: 0L).toInt()
-                        )
-                        else -> null
-                    }
-                }
+                lastVisible = snapshot.documents.lastOrNull()
 
-                _feed.value =
-                    if (reset) newItems
-                    else _feed.value + newItems
-
-                _loading.value = false
-            }
-            .addOnFailureListener {
+                _feed.value = snapshot.documents.mapNotNull { mapDoc(it) }
                 _loading.value = false
             }
     }
 
+    /* ---------- OPTIMISTIC INSERT ---------- */
+
     fun addOptimistic(item: FeedItem) {
         _feed.value = listOf(item) + _feed.value
+    }
+
+    /* ---------- PAGINATION ---------- */
+
+    fun loadMore() {
+        val last = lastVisible ?: return
+
+        firestore.collection("posts")
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .startAfter(last)
+            .limit(PAGE_SIZE.toLong())
+            .get()
+            .addOnSuccessListener { snapshot ->
+                if (snapshot.isEmpty) return@addOnSuccessListener
+
+                lastVisible = snapshot.documents.last()
+
+                val more = snapshot.documents.mapNotNull { mapDoc(it) }
+
+                _feed.value = (_feed.value + more)
+                    .distinctBy {
+                        when (it) {
+                            is FeedItem.Post -> it.id
+                            is FeedItem.Announcement -> it.id
+                        }
+                    }
+            }
+    }
+
+    /* ---------- MAPPER ---------- */
+
+    private fun mapDoc(doc: DocumentSnapshot): FeedItem? {
+        val type = doc.getString("type") ?: return null
+        val time = doc.getLong("createdAt") ?: 0L
+
+        return when (type) {
+            "announcement" -> FeedItem.Announcement(
+                id = doc.id,
+                title = doc.getString("title") ?: "",
+                message = doc.getString("content") ?: "",
+                time = time
+            )
+
+            "post" -> FeedItem.Post(
+                id = doc.id,
+                author = doc.getString("authorName") ?: "User",
+                content = doc.getString("content") ?: "",
+                time = time,
+                likes = (doc.getLong("likes") ?: 0L).toInt(),
+                commentCount = (doc.getLong("commentCount") ?: 0L).toInt()
+            )
+
+            else -> null
+        }
+    }
+
+    override fun onCleared() {
+        listener?.remove()
+        super.onCleared()
     }
 }

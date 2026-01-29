@@ -36,7 +36,7 @@ fun ArticleApp() {
     val auth = remember { FirebaseAuth.getInstance() }
 
     var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
-    var userRole by remember { mutableStateOf("member") } // fail-safe default
+    var userRole by remember { mutableStateOf("member") }
 
     if (!isLoggedIn) {
 
@@ -80,7 +80,6 @@ fun ArticleApp() {
                             isLoggedIn = false
                         }
                     )
-
                 }
 
                 composable("requests") {
