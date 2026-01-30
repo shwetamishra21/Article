@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -44,7 +43,7 @@ data class MyPost(
 
 @Composable
 fun ProfileScreen(
-    role: String = "member", // ✅ ROLE READY
+    role: UserRole,          // ✅ ENUM (DAY 6 SAFE)
     onLogout: () -> Unit
 ) {
     var name by remember { mutableStateOf("User") }
@@ -155,21 +154,28 @@ fun ProfileScreen(
 
                 Spacer(Modifier.height(12.dp))
 
-                // 🔹 ROLE BADGE (NON-INTRUSIVE)
+                /* ---------- ROLE BADGE ---------- */
                 AssistChip(
                     onClick = {},
                     label = {
                         Text(
-                            if (role == "admin") "Admin Account" else "Member Account",
+                            when (role) {
+                                UserRole.ADMIN -> "Admin Account"
+                                UserRole.SERVICE_PROVIDER -> "Service Provider"
+                                UserRole.MEMBER -> "Member Account"
+                            },
                             fontSize = 12.sp
                         )
                     },
                     colors = AssistChipDefaults.assistChipColors(
-                        containerColor =
-                            if (role == "admin")
+                        containerColor = when (role) {
+                            UserRole.ADMIN ->
                                 MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            else
+                            UserRole.SERVICE_PROVIDER ->
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)
+                            UserRole.MEMBER ->
                                 MaterialTheme.colorScheme.surfaceVariant
+                        }
                     )
                 )
 
@@ -198,7 +204,7 @@ fun ProfileScreen(
             )
         }
 
-        /* ---------- MY POSTS (KEY SAFE) ---------- */
+        /* ---------- MY POSTS ---------- */
         items(
             items = myPosts,
             key = { it.id }
@@ -250,7 +256,10 @@ private fun MyPostCard(
                     if (liked) onLike()
                 }) {
                     Icon(
-                        imageVector = if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        imageVector = if (liked)
+                            Icons.Filled.Favorite
+                        else
+                            Icons.Filled.FavoriteBorder,
                         contentDescription = null
                     )
                 }

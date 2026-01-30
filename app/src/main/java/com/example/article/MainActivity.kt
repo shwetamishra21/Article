@@ -3,10 +3,10 @@ package com.example.article
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
+import com. example. article. provider. ProviderRequestsScreen
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.navigation.compose.NavHost
@@ -33,17 +33,20 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun ArticleApp() {
+
     val navController = rememberNavController()
     val auth = remember { FirebaseAuth.getInstance() }
 
     var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
-    var userRole by remember { mutableStateOf("member") }
+    var userRole by remember { mutableStateOf(UserRole.MEMBER) } // ✅ enum
+
+    /* ---------- AUTH GATE ---------- */
 
     if (!isLoggedIn) {
 
         LoginScreen(
-            onLoginSuccess = { role ->
-                userRole = role
+            onLoginSuccess = { roleString ->
+                userRole = UserRole.from(roleString) // ✅ FIX
                 isLoggedIn = true
             }
         )
@@ -52,7 +55,12 @@ fun ArticleApp() {
 
         Scaffold(
             topBar = { TopBar() },
-            bottomBar = { BottomBar(navController) }
+            bottomBar = {
+                BottomBar(
+                    navController = navController,
+                    role = userRole
+                )
+            }
         ) { innerPadding ->
 
             NavHost(
@@ -75,20 +83,24 @@ fun ArticleApp() {
 
                 composable("profile") {
                     ProfileScreen(
-                        role = userRole,
+                        role = userRole, // ✅ FIX
                         onLogout = {
                             auth.signOut()
                             isLoggedIn = false
+                            userRole = UserRole.MEMBER
                         }
                     )
                 }
 
+                /* ---------- REQUESTS ---------- */
                 composable("requests") {
-                    RequestsScreen(
-                        onCreateNew = {
-                            navController.navigate("request_form")
-                        }
-                    )
+                    if (userRole == UserRole.MEMBER || userRole == UserRole.ADMIN) {
+                        RequestsScreen(
+                            onCreateNew = {
+                                navController.navigate("request_form")
+                            }
+                        )
+                    }
                 }
 
                 composable("request_form") {
@@ -98,14 +110,24 @@ fun ArticleApp() {
                     )
                 }
 
+                /* ---------- PROVIDER ONLY ---------- */
+                composable("provider_requests") {
+                    if (userRole == UserRole.SERVICE_PROVIDER) {
+                        ProviderRequestsScreen()
+                    }
+                }
+
+                /* ---------- NEW POST ---------- */
                 composable("new_post") {
-                    NewPostScreen(
-                        onPostUploaded = {
-                            navController.navigate("home") {
-                                popUpTo("home") { inclusive = true }
+                    if (userRole != UserRole.SERVICE_PROVIDER) {
+                        NewPostScreen(
+                            onPostUploaded = {
+                                navController.navigate("home") {
+                                    popUpTo("home") { inclusive = true }
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }

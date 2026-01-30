@@ -4,7 +4,6 @@ import android.app.DatePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -18,6 +17,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import java.util.Calendar
 
 @Composable
@@ -25,6 +26,9 @@ fun RequestFormScreen(
     onCancel: () -> Unit,
     onSubmit: () -> Unit
 ) {
+    val auth = FirebaseAuth.getInstance()
+    val firestore = FirebaseFirestore.getInstance()
+
     val services = listOf(
         "Plumber",
         "Electrician",
@@ -39,6 +43,8 @@ fun RequestFormScreen(
     var description by remember { mutableStateOf("") }
     var selectedDate by remember { mutableStateOf("Select date") }
     var showServiceMenu by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
     val calendar = Calendar.getInstance()
@@ -68,9 +74,7 @@ fun RequestFormScreen(
     ) {
 
         /* ---------- HEADER ---------- */
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onCancel) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back")
             }
@@ -83,7 +87,7 @@ fun RequestFormScreen(
 
         Spacer(Modifier.height(24.dp))
 
-        /* ---------- SERVICE DROPDOWN ---------- */
+        /* ---------- SERVICE ---------- */
         Text("Who do you want to hire?", fontSize = 14.sp)
         Spacer(Modifier.height(6.dp))
 
@@ -97,10 +101,7 @@ fun RequestFormScreen(
                 readOnly = true,
                 placeholder = { Text("Select service") },
                 trailingIcon = {
-                    Icon(
-                        Icons.Default.KeyboardArrowDown,
-                        contentDescription = null
-                    )
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
                 }
             )
 
@@ -127,7 +128,6 @@ fun RequestFormScreen(
             value = title,
             onValueChange = { title = it },
             label = { Text("Problem title") },
-            placeholder = { Text("Short summary of the issue") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
@@ -139,7 +139,6 @@ fun RequestFormScreen(
             value = description,
             onValueChange = { description = it },
             label = { Text("Problem description") },
-            placeholder = { Text("Describe the problem in detail") },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(140.dp),
@@ -148,7 +147,7 @@ fun RequestFormScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        /* ---------- DATE PICKER ---------- */
+        /* ---------- DATE ---------- */
         OutlinedButton(
             onClick = { datePickerDialog.show() },
             modifier = Modifier.fillMaxWidth(),
@@ -157,6 +156,11 @@ fun RequestFormScreen(
             Icon(Icons.Default.CalendarToday, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text(selectedDate)
+        }
+
+        error?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
 
         Spacer(Modifier.height(32.dp))
@@ -175,19 +179,51 @@ fun RequestFormScreen(
             }
 
             Button(
+                enabled = !loading,
                 onClick = {
-                    if (
-                        selectedService.isNotBlank() &&
-                        title.isNotBlank() &&
-                        description.isNotBlank() &&
-                        selectedDate != "Select date"
-                    ) {
-                        onSubmit()
+                    val user = auth.currentUser
+                    if (user == null) {
+                        error = "Not logged in"
+                        return@Button
                     }
+
+                    if (
+                        selectedService.isBlank() ||
+                        title.isBlank() ||
+                        description.isBlank() ||
+                        selectedDate == "Select date"
+                    ) {
+                        error = "Please fill all fields"
+                        return@Button
+                    }
+
+                    loading = true
+                    error = null
+
+                    val requestData = mapOf(
+                        "serviceType" to selectedService,
+                        "title" to title,
+                        "description" to description,
+                        "date" to selectedDate,
+                        "status" to "pending",
+                        "createdBy" to user.uid,
+                        "createdAt" to System.currentTimeMillis()
+                    )
+
+                    firestore.collection("requests")
+                        .add(requestData)
+                        .addOnSuccessListener {
+                            loading = false
+                            onSubmit()
+                        }
+                        .addOnFailureListener {
+                            loading = false
+                            error = it.localizedMessage
+                        }
                 },
                 modifier = Modifier.weight(1f)
             ) {
-                Text("Submit Request")
+                Text(if (loading) "Submitting…" else "Submit Request")
             }
         }
     }

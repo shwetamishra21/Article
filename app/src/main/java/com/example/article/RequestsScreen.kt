@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -17,23 +16,19 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 
-/* ---------- DATA MODEL ---------- */
+/* ---------- MODEL ---------- */
 
 data class ServiceRequest(
     val id: String,
     val title: String,
     val category: String,
-    val status: RequestStatus,
+    val status: String,
     val date: String
 )
-
-enum class RequestStatus {
-    PENDING,
-    ACCEPTED,
-    COMPLETED,
-    CANCELLED
-}
 
 /* ---------- SCREEN ---------- */
 
@@ -41,14 +36,12 @@ enum class RequestStatus {
 fun RequestsScreen(
     onCreateNew: () -> Unit
 ) {
-    var requests by remember {
-        mutableStateOf(
-            listOf(
-                ServiceRequest("req_1", "Bathroom pipe leakage", "Plumber", RequestStatus.PENDING, "Today"),
-                ServiceRequest("req_2", "Fan not working", "Electrician", RequestStatus.ACCEPTED, "Yesterday")
-            )
-        )
-    }
+    val auth = FirebaseAuth.getInstance()
+    val firestore = FirebaseFirestore.getInstance()
+    val user = auth.currentUser
+
+    var requests by remember { mutableStateOf<List<ServiceRequest>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
 
     val background = Brush.verticalGradient(
         listOf(
@@ -56,6 +49,31 @@ fun RequestsScreen(
             MaterialTheme.colorScheme.background
         )
     )
+
+    /* ---------- REALTIME LISTENER ---------- */
+    DisposableEffect(Unit) {
+        if (user == null) return@DisposableEffect onDispose {}
+
+        val listener: ListenerRegistration =
+            firestore.collection("requests")
+                .whereEqualTo("createdBy", user.uid)
+                .addSnapshotListener { snapshot, _ ->
+                    if (snapshot != null) {
+                        requests = snapshot.documents.mapNotNull { doc ->
+                            ServiceRequest(
+                                id = doc.id,
+                                title = doc.getString("title") ?: return@mapNotNull null,
+                                category = doc.getString("serviceType") ?: "",
+                                status = doc.getString("status") ?: "pending",
+                                date = doc.getString("date") ?: ""
+                            )
+                        }
+                        loading = false
+                    }
+                }
+
+        onDispose { listener.remove() }
+    }
 
     Box(
         modifier = Modifier
@@ -73,39 +91,39 @@ fun RequestsScreen(
                 modifier = Modifier.padding(16.dp)
             )
 
-            if (requests.isEmpty()) {
+            if (loading) {
+                CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+            }
+
+            if (!loading && requests.isEmpty()) {
                 EmptyRequestsState(onCreateNew)
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        bottom = 96.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(
-                        items = requests,
-                        key = { it.id }   // ✅ UNIQUE & STABLE
-                    ) { request ->
-                        RequestCard(
-                            request = request,
-                            onCancel = {
-                                requests = requests.map {
-                                    if (it.id == request.id)
-                                        it.copy(status = RequestStatus.CANCELLED)
-                                    else it
-                                }
-                            },
-                            onComplete = {
-                                requests = requests.map {
-                                    if (it.id == request.id)
-                                        it.copy(status = RequestStatus.COMPLETED)
-                                    else it
-                                }
-                            }
-                        )
-                    }
+            }
+
+            LazyColumn(
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    bottom = 96.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(
+                    items = requests,
+                    key = { it.id }
+                ) { request ->
+                    RequestCard(
+                        request = request,
+                        onCancel = {
+                            firestore.collection("requests")
+                                .document(request.id)
+                                .update("status", "cancelled")
+                        },
+                        onComplete = {
+                            firestore.collection("requests")
+                                .document(request.id)
+                                .update("status", "completed")
+                        }
+                    )
                 }
             }
         }
@@ -140,7 +158,6 @@ private fun RequestCard(
 
             Text(
                 text = request.title,
-                style = MaterialTheme.typography.bodyLarge,
                 fontSize = 16.sp
             )
 
@@ -163,7 +180,7 @@ private fun RequestCard(
                 StatusChip(request.status)
 
                 when (request.status) {
-                    RequestStatus.PENDING -> {
+                    "pending" -> {
                         Text(
                             text = "Cancel",
                             color = MaterialTheme.colorScheme.error,
@@ -171,15 +188,13 @@ private fun RequestCard(
                         )
                     }
 
-                    RequestStatus.ACCEPTED -> {
+                    "accepted" -> {
                         Text(
                             text = "Mark Completed",
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.clickable { onComplete() }
                         )
                     }
-
-                    else -> Unit
                 }
             }
         }
@@ -189,13 +204,14 @@ private fun RequestCard(
 /* ---------- STATUS CHIP ---------- */
 
 @Composable
-private fun StatusChip(status: RequestStatus) {
+private fun StatusChip(status: String) {
 
     val (label, color) = when (status) {
-        RequestStatus.PENDING -> "Pending" to Color(0xFFFFA000)
-        RequestStatus.ACCEPTED -> "Accepted" to Color(0xFF2E7D32)
-        RequestStatus.COMPLETED -> "Completed" to Color(0xFF1565C0)
-        RequestStatus.CANCELLED -> "Cancelled" to Color(0xFFB71C1C)
+        "pending" -> "Pending" to Color(0xFFFFA000)
+        "accepted" -> "Accepted" to Color(0xFF2E7D32)
+        "completed" -> "Completed" to Color(0xFF1565C0)
+        "cancelled" -> "Cancelled" to Color(0xFFB71C1C)
+        else -> "Unknown" to Color.Gray
     }
 
     Surface(
@@ -224,13 +240,10 @@ private fun EmptyRequestsState(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "No service requests yet",
-            fontSize = 18.sp
-        )
+        Text("No service requests yet", fontSize = 18.sp)
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Create a request to connect with local service providers",
+            "Create a request to connect with local service providers",
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

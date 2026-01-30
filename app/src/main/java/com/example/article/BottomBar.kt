@@ -4,13 +4,13 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.example.article.UserRole
 
 data class BottomNavItem(
     val label: String,
@@ -19,10 +19,14 @@ data class BottomNavItem(
 )
 
 @Composable
-fun BottomBar(navController: NavController) {
+fun BottomBar(
+    navController: NavController,
+    role: UserRole
+) {
 
-    // 🔹 SEARCH added here
-    val items = listOf(
+    /* ---------- ALL POSSIBLE ITEMS ---------- */
+
+    val allItems = listOf(
         BottomNavItem("Home", "home", Icons.Default.Home),
         BottomNavItem("Search", "search", Icons.Default.Search),
         BottomNavItem("Requests", "requests", Icons.Default.Build),
@@ -30,6 +34,22 @@ fun BottomBar(navController: NavController) {
         BottomNavItem("Inbox", "inbox", Icons.Default.Chat),
         BottomNavItem("Profile", "profile", Icons.Default.Person)
     )
+
+    /* ---------- ROLE FILTERING ---------- */
+
+    val items = when (role) {
+        UserRole.MEMBER -> allItems
+
+        UserRole.SERVICE_PROVIDER -> allItems.filter {
+            it.route in listOf("home", "search", "inbox", "profile")
+        }
+
+        UserRole.ADMIN -> allItems.filter {
+            it.route in listOf("home", "search", "new_post", "inbox", "profile")
+        }
+    }
+
+    /* ---------- STATE ---------- */
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -50,6 +70,8 @@ fun BottomBar(navController: NavController) {
         Color(0xFFB0BEC5)
     else
         Color(0xFF607D8B)
+
+    /* ---------- UI ---------- */
 
     NavigationBar(
         containerColor = containerColor,
