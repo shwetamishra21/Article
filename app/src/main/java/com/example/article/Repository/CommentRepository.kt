@@ -1,7 +1,6 @@
 package com.example.article
 
 import com.google.firebase.firestore.FieldValue
-
 import com.google.firebase.firestore.FirebaseFirestore
 
 object CommentRepository {
@@ -16,15 +15,10 @@ object CommentRepository {
         onComplete: () -> Unit,
         onError: (String) -> Unit
     ) {
-        val commentRef = firestore
-            .collection("posts")
-            .document(postId)
-            .collection("comments")
-            .document()
+        val now = System.currentTimeMillis()
 
-        val postRef = firestore
-            .collection("posts")
-            .document(postId)
+        val postRef = firestore.collection("posts").document(postId)
+        val commentRef = postRef.collection("comments").document()
 
         firestore.runBatch { batch ->
             batch.set(
@@ -33,10 +27,11 @@ object CommentRepository {
                     "authorId" to authorId,
                     "author" to author,
                     "text" to text,
-                    "createdAt" to System.currentTimeMillis()
+                    "createdAt" to now
                 )
             )
 
+            // 🔢 Atomic, crash-safe increment
             batch.update(
                 postRef,
                 "commentCount",
@@ -46,6 +41,25 @@ object CommentRepository {
             onComplete()
         }.addOnFailureListener {
             onError(it.localizedMessage ?: "Failed to add comment")
+        }
+    }
+    fun deleteComment(
+        postId: String,
+        commentId: String,
+        onError: (String) -> Unit = {}
+    ) {
+        val postRef = firestore.collection("posts").document(postId)
+        val commentRef = postRef.collection("comments").document(commentId)
+
+        firestore.runBatch { batch ->
+            batch.delete(commentRef)
+            batch.update(
+                postRef,
+                "commentCount",
+                FieldValue.increment(-1)
+            )
+        }.addOnFailureListener {
+            onError(it.localizedMessage ?: "Failed to delete comment")
         }
     }
 }

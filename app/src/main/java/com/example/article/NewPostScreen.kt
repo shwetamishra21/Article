@@ -154,7 +154,6 @@ fun NewPostScreen(
                             )
                         )
                     }
-
                     PostType.ANNOUNCEMENT -> {
                         viewModel.addOptimistic(
                             FeedItem.Announcement(

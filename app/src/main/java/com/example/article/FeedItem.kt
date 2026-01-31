@@ -9,7 +9,8 @@ sealed class FeedItem {
         val likes: Int,
 
         val commentCount: Int,
-        val time: Long
+        val time: Long,
+        val likedByMe: Boolean = false
     ) : FeedItem()
 
     data class Announcement(
@@ -17,5 +18,6 @@ sealed class FeedItem {
         val title: String,
         val message: String,
         val time: Long
+
     ) : FeedItem()
 }

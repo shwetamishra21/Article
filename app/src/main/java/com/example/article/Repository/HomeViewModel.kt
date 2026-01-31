@@ -1,60 +1,55 @@
 package com.example.article.feed
 
 import androidx.lifecycle.ViewModel
+import com.example.article.FeedItem
+import com.example.article.core.UiState
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
-
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import com. example. article. FeedItem
 
 class HomeViewModel : ViewModel() {
 
     private val firestore = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
 
-    private val _feed = MutableStateFlow<List<FeedItem>>(emptyList())
-    val feed: StateFlow<List<FeedItem>> = _feed
-
-    private val _loading = MutableStateFlow(false)
-    val loading: StateFlow<Boolean> = _loading
+    private val _uiState =
+        MutableStateFlow<UiState<List<FeedItem>>>(UiState.Idle)
+    val uiState: StateFlow<UiState<List<FeedItem>>> = _uiState
 
     private var lastVisible: DocumentSnapshot? = null
     private var listener: ListenerRegistration? = null
 
     private val PAGE_SIZE = 20
 
-    /* ---------- REALTIME INITIAL LOAD ---------- */
+    /* ---------- LOAD FEED ---------- */
 
     fun loadFeed() {
         if (listener != null) return
 
-        _loading.value = true
+        _uiState.value = UiState.Loading
 
         listener = firestore.collection("posts")
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .limit(PAGE_SIZE.toLong())
-            .addSnapshotListener { snapshot, error ->
-                if (snapshot == null || error != null) {
-                    _loading.value = false
+            .addSnapshotListener { snapshot, _ ->
+
+                if (snapshot == null) {
+                    _uiState.value = UiState.Error("Failed to load feed")
                     return@addSnapshotListener
                 }
 
+                val items = snapshot.documents.mapNotNull { mapDoc(it) }
                 lastVisible = snapshot.documents.lastOrNull()
-
-                _feed.value = snapshot.documents.mapNotNull { mapDoc(it) }
-                _loading.value = false
+                _uiState.value = UiState.Success(items)
             }
-    }
-
-    /* ---------- OPTIMISTIC INSERT ---------- */
-
-    fun addOptimistic(item: FeedItem) {
-        _feed.value = listOf(item) + _feed.value
     }
 
     /* ---------- PAGINATION ---------- */
 
     fun loadMore() {
         val last = lastVisible ?: return
+        val current = (_uiState.value as? UiState.Success)?.data ?: return
 
         firestore.collection("posts")
             .orderBy("createdAt", Query.Direction.DESCENDING)
@@ -68,14 +63,41 @@ class HomeViewModel : ViewModel() {
 
                 val more = snapshot.documents.mapNotNull { mapDoc(it) }
 
-                _feed.value = (_feed.value + more)
-                    .distinctBy {
-                        when (it) {
-                            is FeedItem.Post -> it.id
-                            is FeedItem.Announcement -> it.id
-                        }
+                val merged = (current + more).distinctBy {
+                    when (it) {
+                        is FeedItem.Post -> it.id
+                        is FeedItem.Announcement -> it.id
                     }
+                }
+
+                _uiState.value = UiState.Success(merged)
             }
+    }
+
+    /* ---------- OPTIMISTIC LIKE ---------- */
+
+    fun toggleLikeOptimistic(postId: String) {
+        val current = (_uiState.value as? UiState.Success)?.data ?: return
+
+        val updated = current.map {
+            if (it is FeedItem.Post && it.id == postId && !it.likedByMe) {
+                it.copy(
+                    likes = it.likes + 1,
+                    likedByMe = true
+                )
+            } else it
+        }
+
+        _uiState.value = UiState.Success(updated)
+    }
+
+    /* ---------- REFRESH ---------- */
+
+    fun refreshFeed() {
+        listener?.remove()
+        listener = null
+        lastVisible = null
+        loadFeed()
     }
 
     /* ---------- MAPPER ---------- */
@@ -83,22 +105,32 @@ class HomeViewModel : ViewModel() {
     private fun mapDoc(doc: DocumentSnapshot): FeedItem? {
         val type = doc.getString("type") ?: return null
         val time = doc.getLong("createdAt") ?: 0L
+        val currentUid = auth.currentUser?.uid
 
         return when (type) {
+            "post" -> {
+                val likedBy =
+                    doc.get("likedBy") as? List<*> ?: emptyList<Any>()
+
+                val likedByMe =
+                    currentUid != null && likedBy.contains(currentUid)
+
+                FeedItem.Post(
+                    id = doc.id,
+                    author = doc.getString("authorName") ?: "User",
+                    content = doc.getString("content") ?: "",
+                    time = time,
+                    likes = (doc.getLong("likes") ?: 0L).toInt(),
+                    commentCount = (doc.getLong("commentCount") ?: 0L).toInt(),
+                    likedByMe = likedByMe
+                )
+            }
+
             "announcement" -> FeedItem.Announcement(
                 id = doc.id,
                 title = doc.getString("title") ?: "",
                 message = doc.getString("content") ?: "",
                 time = time
-            )
-
-            "post" -> FeedItem.Post(
-                id = doc.id,
-                author = doc.getString("authorName") ?: "User",
-                content = doc.getString("content") ?: "",
-                time = time,
-                likes = (doc.getLong("likes") ?: 0L).toInt(),
-                commentCount = (doc.getLong("commentCount") ?: 0L).toInt()
             )
 
             else -> null

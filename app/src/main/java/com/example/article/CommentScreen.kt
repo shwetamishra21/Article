@@ -1,19 +1,22 @@
 package com.example.article
 
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import androidx. compose. foundation. ExperimentalFoundationApi
 import com.google.firebase.firestore.ListenerRegistration
+import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CommentScreen(
     postId: String,
@@ -21,11 +24,15 @@ fun CommentScreen(
 ) {
     val firestore = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
+    val scope = rememberCoroutineScope()
 
     var comments by remember { mutableStateOf<List<Comment>>(emptyList()) }
+    var optimisticComments by remember { mutableStateOf<List<Comment>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var message by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+
+    val listState = rememberLazyListState()
 
     /* ---------- REALTIME LISTENER ---------- */
     DisposableEffect(postId) {
@@ -39,18 +46,23 @@ fun CommentScreen(
                         comments = snapshot.documents.mapNotNull { doc ->
                             Comment(
                                 id = doc.id,
-                                postId = postId, // ✅ FIX
+                                postId = postId,
                                 authorId = doc.getString("authorId") ?: "",
                                 author = doc.getString("author") ?: "User",
                                 message = doc.getString("text") ?: "",
                                 createdAt = doc.getLong("createdAt") ?: 0L
                             )
                         }
+                        optimisticComments = emptyList()
                         loading = false
                     }
                 }
 
         onDispose { listener.remove() }
+    }
+
+    val allComments = remember(comments, optimisticComments) {
+        (comments + optimisticComments).distinctBy { it.id }
     }
 
     /* ---------------- UI ---------------- */
@@ -60,9 +72,7 @@ fun CommentScreen(
             TopAppBar(
                 title = { Text("Comments") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Text("←")
-                    }
+                    IconButton(onClick = onBack) { Text("←") }
                 }
             )
         }
@@ -86,16 +96,36 @@ fun CommentScreen(
             }
 
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(
-                    items = comments,
+                    items = allComments,
                     key = { it.id }
                 ) { comment ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
+
+                    val currentUserId = auth.currentUser?.uid
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = {},
+                                onLongClick = {
+                                    // ✅ AUTHOR (or admin via rules) CAN DELETE
+                                    if (currentUserId == comment.authorId) {
+                                        CommentRepository.deleteComment(
+                                            postId = postId,
+                                            commentId = comment.id,
+                                            onError = { error = it }
+                                        )
+                                    }
+                                }
+                            )
+                    ) {
                         Column(Modifier.padding(12.dp)) {
                             Text(
                                 text = comment.author,
@@ -128,22 +158,43 @@ fun CommentScreen(
                 Button(
                     enabled = message.isNotBlank(),
                     onClick = {
-                        val user = auth.currentUser
-                        if (user == null) {
+                        val user = auth.currentUser ?: run {
                             error = "Not logged in"
                             return@Button
+                        }
+
+                        val tempId = "local_${System.currentTimeMillis()}"
+
+                        val optimistic = Comment(
+                            id = tempId,
+                            postId = postId,
+                            authorId = user.uid,
+                            author = user.email ?: "You",
+                            message = message,
+                            createdAt = System.currentTimeMillis()
+                        )
+
+                        // ✅ OPTIMISTIC INSERT
+                        optimisticComments = optimisticComments + optimistic
+                        message = ""
+
+                        scope.launch {
+                            listState.animateScrollToItem(
+                                maxOf(allComments.size, 0)
+                            )
                         }
 
                         CommentRepository.addComment(
                             postId = postId,
                             authorId = user.uid,
                             author = user.email ?: "User",
-                            text = message,
-                            onComplete = {
-                                message = ""
-                                error = null
-                            },
-                            onError = { error = it }
+                            text = optimistic.message,
+                            onComplete = { error = null },
+                            onError = { err ->
+                                optimisticComments =
+                                    optimisticComments.filterNot { it.id == tempId }
+                                error = err
+                            }
                         )
                     }
                 ) {

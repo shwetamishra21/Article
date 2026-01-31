@@ -2,7 +2,6 @@ package com.example.article
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -22,15 +21,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.article.FeedItem
+import androidx.navigation.NavController
+import com.example.article.Repository.LikeRepository
+import com.example.article.core.UiState
 import com.example.article.feed.HomeViewModel
+
+/* ---------------- HOME SCREEN ---------------- */
 
 @Composable
 fun HomeScreen(
+    navController: NavController,
     viewModel: HomeViewModel = viewModel()
 ) {
-    val feed by viewModel.feed.collectAsState()
-    val loading by viewModel.loading.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
 
     val backgroundGradient = Brush.verticalGradient(
         listOf(
@@ -39,42 +42,110 @@ fun HomeScreen(
         )
     )
 
-    // Attach realtime listener once
     LaunchedEffect(Unit) {
         viewModel.loadFeed()
     }
 
-    LazyColumn(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundGradient),
+            .background(backgroundGradient)
+    ) {
+        when (val state = uiState) {
+            UiState.Loading -> FeedLoading()
+
+            is UiState.Error -> FeedError(
+                message = state.message,
+                onRetry = { viewModel.refreshFeed() }
+            )
+
+            is UiState.Success -> FeedList(
+                feed = state.data,
+                navController = navController,
+                onLoadMore = { viewModel.loadMore() },
+                onLike = { post ->
+                    viewModel.toggleLikeOptimistic(post.id)
+                    LikeRepository.toggleLike(
+                        postId = post.id,
+                        isCurrentlyLiked = post.likedByMe
+                    )
+                }
+            )
+
+
+            UiState.Idle -> Unit
+        }
+    }
+}
+
+/* ---------------- FEED STATES ---------------- */
+
+@Composable
+private fun FeedLoading() {
+    Column {
+        HomeHeader()
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+    }
+}
+
+@Composable
+private fun FeedError(
+    message: String,
+    onRetry: () -> Unit
+) {
+    Column {
+        HomeHeader()
+
+        Text(
+            text = message,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(16.dp)
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        Button(
+            onClick = onRetry,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        ) {
+            Text("Retry")
+        }
+    }
+}
+
+@Composable
+private fun FeedEmpty() {
+    Text(
+        text = "No posts yet",
+        modifier = Modifier.padding(16.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+/* ---------------- FEED LIST ---------------- */
+
+@Composable
+private fun FeedList(
+    feed: List<FeedItem>,
+    navController: NavController,
+    onLoadMore: () -> Unit,
+    onLike: (FeedItem.Post) -> Unit
+) {
+    LazyColumn(
         contentPadding = PaddingValues(bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-
         item { HomeHeader() }
 
-        if (loading && feed.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            }
-        }
-
-        if (!loading && feed.isEmpty()) {
-            item {
-                Text(
-                    text = "No posts yet",
-                    modifier = Modifier.padding(16.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+        if (feed.isEmpty()) {
+            item { FeedEmpty() }
         }
 
         items(
@@ -88,14 +159,19 @@ fun HomeScreen(
         ) { item ->
             when (item) {
                 is FeedItem.Announcement -> AnnouncementCard(item)
-                is FeedItem.Post -> PostCard(item)
+                is FeedItem.Post -> PostCard(
+                    item = item,
+                    onLike = { onLike(item)},
+                    onComment = {
+                        navController.navigate("comments/${item.id}")
+                    }
+                )
             }
         }
 
-        // Pagination trigger
         item {
             LaunchedEffect(feed.size) {
-                viewModel.loadMore()
+                onLoadMore()
             }
         }
     }
@@ -158,12 +234,14 @@ private fun AnnouncementCard(item: FeedItem.Announcement) {
     }
 }
 
-/* ---------------- POST ---------------- */
+/* ---------------- POST CARD ---------------- */
 
 @Composable
-private fun PostCard(item: FeedItem.Post) {
-    var liked by remember { mutableStateOf(false) }
-
+private fun PostCard(
+    item: FeedItem.Post,
+    onLike: () -> Unit,
+    onComment: () -> Unit
+) {
     Card(
         modifier = Modifier
             .padding(horizontal = 16.dp)
@@ -203,15 +281,31 @@ private fun PostCard(item: FeedItem.Post) {
             Spacer(Modifier.height(8.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { liked = !liked }) {
+
+                IconButton(
+                    enabled = !item.likedByMe,
+                    onClick = onLike
+                ) {
                     Icon(
-                        if (liked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                        contentDescription = null
+                        imageVector =
+                            if (item.likedByMe)
+                                Icons.Filled.Favorite
+                            else
+                                Icons.Filled.FavoriteBorder,
+                        contentDescription = null,
+                        tint =
+                            if (item.likedByMe)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                LocalContentColor.current
                     )
                 }
 
-                IconButton(onClick = {}) {
-                    Icon(Icons.AutoMirrored.Filled.Comment, contentDescription = null)
+                IconButton(onClick = onComment) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Comment,
+                        contentDescription = null
+                    )
                 }
 
                 Spacer(Modifier.width(6.dp))

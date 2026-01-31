@@ -6,12 +6,12 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
-import com. example. article. provider. ProviderRequestsScreen
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.article.provider.ProviderRequestsScreen
 import com.example.article.ui.theme.ArticleTheme
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
@@ -38,7 +38,7 @@ fun ArticleApp() {
     val auth = remember { FirebaseAuth.getInstance() }
 
     var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
-    var userRole by remember { mutableStateOf(UserRole.MEMBER) } // ✅ enum
+    var userRole by remember { mutableStateOf(UserRole.MEMBER) }
 
     /* ---------- AUTH GATE ---------- */
 
@@ -46,7 +46,7 @@ fun ArticleApp() {
 
         LoginScreen(
             onLoginSuccess = { roleString ->
-                userRole = UserRole.from(roleString) // ✅ FIX
+                userRole = UserRole.from(roleString)
                 isLoggedIn = true
             }
         )
@@ -69,21 +69,25 @@ fun ArticleApp() {
                 modifier = Modifier.padding(innerPadding)
             ) {
 
+                /* ---------- HOME ---------- */
                 composable("home") {
-                    HomeScreen()
+                    HomeScreen(navController = navController)
                 }
 
+                /* ---------- SEARCH ---------- */
                 composable("search") {
                     SearchScreen()
                 }
 
+                /* ---------- INBOX ---------- */
                 composable("inbox") {
                     InboxScreen()
                 }
 
+                /* ---------- PROFILE ---------- */
                 composable("profile") {
                     ProfileScreen(
-                        role = userRole, // ✅ FIX
+                        role = userRole,
                         onLogout = {
                             auth.signOut()
                             isLoggedIn = false
@@ -92,7 +96,7 @@ fun ArticleApp() {
                     )
                 }
 
-                /* ---------- REQUESTS ---------- */
+                /* ---------- MEMBER / ADMIN REQUESTS ---------- */
                 composable("requests") {
                     if (userRole == UserRole.MEMBER || userRole == UserRole.ADMIN) {
                         RequestsScreen(
@@ -128,6 +132,17 @@ fun ArticleApp() {
                             }
                         )
                     }
+                }
+
+                /* ---------- COMMENTS (DAY 7 STEP 8) ---------- */
+                composable("comments/{postId}") { backStack ->
+                    val postId =
+                        backStack.arguments?.getString("postId") ?: return@composable
+
+                    CommentScreen(
+                        postId = postId,
+                        onBack = { navController.popBackStack() }
+                    )
                 }
             }
         }
