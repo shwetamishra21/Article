@@ -16,7 +16,8 @@ import androidx. compose. foundation. ExperimentalFoundationApi
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class,
+    ExperimentalFoundationApi::class)
 @Composable
 fun CommentScreen(
     postId: String,

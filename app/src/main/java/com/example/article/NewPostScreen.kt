@@ -150,7 +150,8 @@ fun NewPostScreen(
                                 content = content,
                                 time = timestamp,
                                 likes = 0,
-                                commentCount = 0
+                                commentCount = 0,
+                                likedByMe = false
                             )
                         )
                     }

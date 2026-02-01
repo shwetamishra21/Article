@@ -141,4 +141,9 @@ class HomeViewModel : ViewModel() {
         listener?.remove()
         super.onCleared()
     }
+
+    fun addOptimistic(item: FeedItem) {
+        val current = (_uiState.value as? UiState.Success)?.data ?: emptyList()
+        _uiState.value = UiState.Success(listOf(item) + current)
+    }
 }
