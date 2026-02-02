@@ -231,4 +231,5 @@ private fun PostTypeTab(
                 MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
+
 }

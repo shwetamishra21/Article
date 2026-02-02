@@ -8,6 +8,7 @@ data class ChatThread(
     val type: String // "service" or "member"
 )
 
+
 data class ChatMessage(
     val id: String = "",
     val text: String = "",

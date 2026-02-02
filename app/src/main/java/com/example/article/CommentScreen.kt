@@ -377,6 +377,7 @@ private fun CommentCard(
                     color = MaterialTheme.colorScheme.onSurface,
                     lineHeight = 20.sp
                 )
+
                 Text(
                     text = "Just now",
                     style = MaterialTheme.typography.bodySmall,

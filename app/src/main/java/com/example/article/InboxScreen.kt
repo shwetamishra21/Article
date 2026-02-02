@@ -177,7 +177,8 @@ private fun InboxList(
             end = 16.dp,
             top = 8.dp,
             bottom = 100.dp
-        ),
+        )
+        ,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(
