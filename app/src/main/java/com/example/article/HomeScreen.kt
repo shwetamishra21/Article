@@ -35,98 +35,87 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    val backgroundGradient = Brush.verticalGradient(
-        listOf(
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-            MaterialTheme.colorScheme.background
-        )
-    )
-
     LaunchedEffect(Unit) {
         viewModel.loadFeed()
     }
 
+    // ← FIXED: Direct Box without nested columns
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundGradient)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                        MaterialTheme.colorScheme.background
+                    )
+                )
+            )
     ) {
         when (val state = uiState) {
-            UiState.Loading -> FeedLoading()
-
-            is UiState.Error -> FeedError(
-                message = state.message,
-                onRetry = { viewModel.refreshFeed() }
-            )
-
-            is UiState.Success -> FeedList(
-                feed = state.data,
-                navController = navController,
-                onLoadMore = { viewModel.loadMore() },
-                onLike = { post ->
-                    viewModel.toggleLikeOptimistic(post.id)
-                    LikeRepository.toggleLike(
-                        postId = post.id,
-                        isCurrentlyLiked = post.likedByMe
+            UiState.Loading -> {
+                // Loading state
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(40.dp)
                     )
                 }
-            )
+            }
 
+            is UiState.Error -> {
+                // Error state
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "Unable to load feed",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = { viewModel.refreshFeed() },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Retry")
+                    }
+                }
+            }
+
+            is UiState.Success -> {
+                // ← FIXED: Single LazyColumn with everything inside
+                FeedList(
+                    feed = state.data,
+                    navController = navController,
+                    onLoadMore = { viewModel.loadMore() },
+                    onLike = { post ->
+                        viewModel.toggleLikeOptimistic(post.id)
+                        LikeRepository.toggleLike(
+                            postId = post.id,
+                            isCurrentlyLiked = post.likedByMe
+                        )
+                    }
+                )
+            }
 
             UiState.Idle -> Unit
         }
     }
-}
-
-/* ---------------- FEED STATES ---------------- */
-
-@Composable
-private fun FeedLoading() {
-    Column {
-        HomeHeader()
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(32.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator()
-        }
-    }
-}
-
-@Composable
-private fun FeedError(
-    message: String,
-    onRetry: () -> Unit
-) {
-    Column {
-        HomeHeader()
-
-        Text(
-            text = message,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(16.dp)
-        )
-
-        Spacer(Modifier.height(12.dp))
-
-        Button(
-            onClick = onRetry,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        ) {
-            Text("Retry")
-        }
-    }
-}
-
-@Composable
-private fun FeedEmpty() {
-    Text(
-        text = "No posts yet",
-        modifier = Modifier.padding(16.dp),
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
 }
 
 /* ---------------- FEED LIST ---------------- */
@@ -139,21 +128,53 @@ private fun FeedList(
     onLike: (FeedItem.Post) -> Unit
 ) {
     LazyColumn(
-        contentPadding = PaddingValues(bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier.fillMaxSize(), // ← CRITICAL: fillMaxSize here
+        contentPadding = PaddingValues(
+            top = 8.dp,
+            bottom = 100.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { HomeHeader() }
-
-        if (feed.isEmpty()) {
-            item { FeedEmpty() }
+        // Header inside LazyColumn
+        item(key = "header") {
+            HomeHeader()
         }
 
+        // Empty state
+        if (feed.isEmpty()) {
+            item(key = "empty") {
+                Box(
+                    modifier = Modifier
+                        .fillParentMaxSize()
+                        .padding(48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "No posts yet",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Be the first to share!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        // Feed items
         items(
             items = feed,
-            key = {
-                when (it) {
-                    is FeedItem.Post -> it.id
-                    is FeedItem.Announcement -> it.id
+            key = { item ->
+                when (item) {
+                    is FeedItem.Post -> "post_${item.id}"
+                    is FeedItem.Announcement -> "announcement_${item.id}"
                 }
             }
         ) { item ->
@@ -161,7 +182,7 @@ private fun FeedList(
                 is FeedItem.Announcement -> AnnouncementCard(item)
                 is FeedItem.Post -> PostCard(
                     item = item,
-                    onLike = { onLike(item)},
+                    onLike = { onLike(item) },
                     onComment = {
                         navController.navigate("comments/${item.id}")
                     }
@@ -169,7 +190,8 @@ private fun FeedList(
             }
         }
 
-        item {
+        // Pagination trigger
+        item(key = "pagination") {
             LaunchedEffect(feed.size) {
                 onLoadMore()
             }
@@ -181,31 +203,39 @@ private fun FeedList(
 
 @Composable
 private fun HomeHeader() {
-    val gradient = Brush.horizontalGradient(
-        listOf(
-            MaterialTheme.colorScheme.primary,
-            MaterialTheme.colorScheme.secondary
-        )
-    )
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
-            .background(gradient, RoundedCornerShape(20.dp))
-            .padding(20.dp)
-    ) {
-        Column {
-            Text("Good day 👋", color = MaterialTheme.colorScheme.onPrimary, fontSize = 14.sp)
-            Text(
-                "Your Neighborhood",
-                color = MaterialTheme.colorScheme.onPrimary,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .background(
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primary,
+                        MaterialTheme.colorScheme.secondary
+                    )
+                ),
+                shape = RoundedCornerShape(20.dp)
             )
-            Spacer(Modifier.height(6.dp))
+            .padding(24.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                "Stay updated with your community",
+                text = "Good day 👋",
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 0.3.sp
+            )
+            Text(
+                text = "Your Neighborhood",
+                color = MaterialTheme.colorScheme.onPrimary,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "Stay updated with your community",
                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
                 fontSize = 13.sp
             )
@@ -219,17 +249,32 @@ private fun HomeHeader() {
 private fun AnnouncementCard(item: FeedItem.Announcement) {
     Card(
         modifier = Modifier
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 20.dp)
             .fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 0.dp
         )
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(item.title, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(6.dp))
-            Text(item.message, fontSize = 14.sp)
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = item.message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 20.sp
+            )
         }
     }
 }
@@ -244,75 +289,121 @@ private fun PostCard(
 ) {
     Card(
         modifier = Modifier
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 20.dp)
             .fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(4.dp)
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 2.dp,
+            pressedElevation = 4.dp
+        ),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
-        Column(Modifier.padding(16.dp)) {
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Author
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        item.author.first().uppercase(),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontWeight = FontWeight.Bold
+                        text = item.author.first().uppercase(),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
                     )
                 }
 
-                Spacer(Modifier.width(12.dp))
-                Text(item.author, fontWeight = FontWeight.Bold)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = item.author,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Just now",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                }
             }
 
-            Spacer(Modifier.height(10.dp))
-
+            // Content
             Text(
-                item.content,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
+                text = item.content,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 22.sp
             )
 
-            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-
+            // Actions
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 IconButton(
+                    onClick = onLike,
                     enabled = !item.likedByMe,
-                    onClick = onLike
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
-                        imageVector =
-                            if (item.likedByMe)
-                                Icons.Filled.Favorite
-                            else
-                                Icons.Filled.FavoriteBorder,
-                        contentDescription = null,
-                        tint =
-                            if (item.likedByMe)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                LocalContentColor.current
+                        imageVector = if (item.likedByMe)
+                            Icons.Filled.Favorite
+                        else
+                            Icons.Filled.FavoriteBorder,
+                        contentDescription = "Like",
+                        tint = if (item.likedByMe)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
-                IconButton(onClick = onComment) {
+                if (item.likes > 0) {
+                    Text(
+                        text = "${item.likes}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                IconButton(
+                    onClick = onComment,
+                    modifier = Modifier.size(40.dp)
+                ) {
                     Icon(
-                        Icons.AutoMirrored.Filled.Comment,
-                        contentDescription = null
+                        imageVector = Icons.AutoMirrored.Filled.Comment,
+                        contentDescription = "Comment",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
-
-                Spacer(Modifier.width(6.dp))
 
                 Text(
                     text = "${item.commentCount}",
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

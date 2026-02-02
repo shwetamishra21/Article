@@ -1,8 +1,12 @@
 package com.example.article
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
@@ -11,15 +15,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.navigation.NavController
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import com.example.article.Repository.InboxViewModel
 import com.example.article.core.UiState
 import com.google.firebase.auth.FirebaseAuth
@@ -40,76 +43,88 @@ fun InboxScreen(
         userId?.let { viewModel.loadInbox(it) }
     }
 
-    val backgroundGradient = Brush.verticalGradient(
-        listOf(
-            Color(0xFFE3F2FD),
-            Color(0xFFBBDEFB),
-            Color(0xFFE3F2FD)
-        )
-    )
-
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Inbox") }) }
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "Inbox",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            )
+        }
     ) { padding ->
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(backgroundGradient)
                 .padding(padding)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                            MaterialTheme.colorScheme.background
+                        )
+                    )
+                )
         ) {
-
             /* ---------- TABS ---------- */
-            Row(
+            Surface(
                 modifier = Modifier
-                    .padding(16.dp)
-                    .background(Color.White, RoundedCornerShape(20.dp))
-                    .padding(6.dp)
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                tonalElevation = 0.dp
             ) {
-                InboxTab(
-                    icon = Icons.Default.Build,
-                    label = "Services",
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    modifier = Modifier.weight(1f)
-                )
-                InboxTab(
-                    icon = Icons.Default.Group,
-                    label = "Members",
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    modifier = Modifier.weight(1f)
-                )
+                Row(
+                    modifier = Modifier.padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    InboxTab(
+                        icon = Icons.Default.Build,
+                        label = "Services",
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        modifier = Modifier.weight(1f)
+                    )
+                    InboxTab(
+                        icon = Icons.Default.Group,
+                        label = "Members",
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
-
-            Spacer(Modifier.height(16.dp))
 
             /* ---------- CONTENT ---------- */
             when (uiState) {
                 UiState.Loading -> {
                     Box(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(48.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator()
+                        CircularProgressIndicator(
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(40.dp)
+                        )
                     }
                 }
 
                 is UiState.Success -> {
-                    val allChats =
-                        (uiState as UiState.Success<List<ChatThread>>).data
-
+                    val allChats = (uiState as UiState.Success<List<ChatThread>>).data
                     val filteredChats = allChats.filter {
-                        if (selectedTab == 0) it.type == "service"
-                        else it.type == "member"
+                        if (selectedTab == 0) it.type == "service" else it.type == "member"
                     }
 
                     if (filteredChats.isEmpty()) {
-                        if (selectedTab == 0) {
-                            EmptyServiceInbox(onCreateRequest)
-                        } else {
-                            EmptyMemberInbox()
-                        }
+                        EmptyInboxState(
+                            isService = selectedTab == 0,
+                            onCreateRequest = onCreateRequest
+                        )
                     } else {
                         InboxList(
                             chats = filteredChats,
@@ -119,11 +134,28 @@ fun InboxScreen(
                 }
 
                 is UiState.Error -> {
-                    Text(
-                        text = (uiState as UiState.Error).message,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(16.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Unable to load inbox",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = (uiState as UiState.Error).message,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
 
                 UiState.Idle -> Unit
@@ -139,27 +171,85 @@ private fun InboxList(
     chats: List<ChatThread>,
     navController: NavController
 ) {
-    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-        chats.forEach { chat ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 6.dp)
-                    .clickable {
-                        navController.navigate("chat/${chat.id}/${chat.title}")
-                    },
-                shape = RoundedCornerShape(14.dp),
-                elevation = CardDefaults.cardElevation(4.dp)
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(chat.title, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        chat.lastMessage,
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+    LazyColumn(
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = 8.dp,
+            bottom = 100.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(
+            items = chats,
+            key = { it.id }
+        ) { chat ->
+            ChatThreadCard(
+                chat = chat,
+                onClick = {
+                    navController.navigate("chat/${chat.id}/${chat.title}")
                 }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChatThreadCard(
+    chat: ChatThread,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 2.dp,
+            pressedElevation = 4.dp
+        ),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Avatar
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = chat.title.first().uppercase(),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            }
+
+            // Content
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = chat.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = chat.lastMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
             }
         }
     }
@@ -175,106 +265,104 @@ private fun InboxTab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
-            .shadow(
-                elevation = if (selected) 6.dp else 0.dp,
-                shape = RoundedCornerShape(16.dp)
-            )
-            .background(
-                if (selected) Color(0xFF42A5F5) else Color.Transparent,
-                RoundedCornerShape(16.dp)
-            )
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        contentAlignment = Alignment.Center
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected)
+            MaterialTheme.colorScheme.primary
+        else
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.01f),
+        tonalElevation = if (selected) 2.dp else 0.dp
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Icon(
-                icon,
+                imageVector = icon,
                 contentDescription = null,
-                tint = if (selected) Color.White else Color(0xFF607D8B),
+                tint = if (selected)
+                    MaterialTheme.colorScheme.onPrimary
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp)
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 text = label,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (selected) Color.White else Color(0xFF607D8B)
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (selected)
+                    MaterialTheme.colorScheme.onPrimary
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
 
-/* ---------- EMPTY STATES ---------- */
+/* ---------- EMPTY STATE ---------- */
 
 @Composable
-private fun EmptyServiceInbox(onCreateRequest: () -> Unit) {
+private fun EmptyInboxState(
+    isService: Boolean,
+    onCreateRequest: () -> Unit
+) {
     Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.TopCenter
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Card(
-            modifier = Modifier
-                .padding(24.dp)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(8.dp)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            // Icon
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Default.Build,
+                    imageVector = if (isService) Icons.Default.Build else Icons.Default.Group,
                     contentDescription = null,
-                    tint = Color(0xFF42A5F5),
-                    modifier = Modifier.size(52.dp)
+                    modifier = Modifier.size(40.dp),
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
                 )
+            }
 
-                Spacer(Modifier.height(14.dp))
+            Text(
+                text = if (isService)
+                    "No service conversations yet"
+                else
+                    "No member conversations yet",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
 
-                Text(
-                    "No service conversations yet",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+            Text(
+                text = if (isService)
+                    "Once a provider accepts your request, you'll chat here"
+                else
+                    "Start connecting with your neighbors!",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
-                Spacer(Modifier.height(6.dp))
-
-                Text(
-                    "Once a provider accepts your request,\nyou’ll be able to chat here.",
-                    fontSize = 13.sp,
-                    color = Color(0xFF607D8B),
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(Modifier.height(24.dp))
-
+            if (isService) {
+                Spacer(Modifier.height(8.dp))
                 Button(
                     onClick = onCreateRequest,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Create Service Request")
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun EmptyMemberInbox() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "No member conversations yet",
-            fontSize = 14.sp,
-            color = Color(0xFF607D8B)
-        )
     }
 }
