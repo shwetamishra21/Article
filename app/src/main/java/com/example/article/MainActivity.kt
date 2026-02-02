@@ -81,7 +81,9 @@ fun ArticleApp() {
 
                 /* ---------- INBOX ---------- */
                 composable("inbox") {
-                    InboxScreen()
+                    InboxScreen(
+                        navController = navController
+                    )
                 }
 
                 /* ---------- PROFILE ---------- */
@@ -144,6 +146,17 @@ fun ArticleApp() {
                         onBack = { navController.popBackStack() }
                     )
                 }
+                composable("chat/{chatId}/{title}") { backStack ->
+                    val chatId = backStack.arguments?.getString("chatId") ?: return@composable
+                    val title = backStack.arguments?.getString("title") ?: "Chat"
+
+                    ChatScreen(
+                        navController = navController,
+                        chatId = chatId,
+                        title = title
+                    )
+                }
+
             }
         }
     }
