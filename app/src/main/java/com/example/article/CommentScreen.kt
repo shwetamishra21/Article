@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -13,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx. compose. material. icons. automirrored. filled. ArrowBack
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -81,18 +83,21 @@ fun CommentScreen(
                 title = {
                     Text(
                         text = "Comments",
-                        fontWeight = FontWeight.SemiBold
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Text(
-                            text = "←",
-                            fontSize = 24.sp
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back"
                         )
                     }
                 }
             )
+
         }
     ) { padding ->
         Column(
@@ -100,8 +105,7 @@ fun CommentScreen(
                 .padding(padding)
                 .fillMaxSize()
         ) {
-            // Loading State
-            if (loading && comments.isEmpty()) {
+            if (loading && allComments.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -114,7 +118,6 @@ fun CommentScreen(
                     )
                 }
             } else {
-                // Comments List
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.weight(1f),
@@ -124,7 +127,6 @@ fun CommentScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Empty State
                     if (allComments.isEmpty()) {
                         item {
                             Box(
@@ -153,7 +155,6 @@ fun CommentScreen(
                         }
                     }
 
-                    // Comments
                     items(
                         items = allComments,
                         key = { it.id }

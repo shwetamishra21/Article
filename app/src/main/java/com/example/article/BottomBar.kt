@@ -29,7 +29,7 @@ fun BottomBar(
         UserRole.MEMBER -> listOf(
             BottomNavItem("Home", "home", Icons.Default.Home),
             BottomNavItem("Search", "search", Icons.Default.Search),
-            BottomNavItem("Services", "requests", Icons.Default.Build), // ← Services combines requests
+            BottomNavItem("Services", "requests", Icons.Default.Build),
             BottomNavItem("Inbox", "inbox", Icons.Default.Chat),
             BottomNavItem("Profile", "profile", Icons.Default.Person)
         )
@@ -44,11 +44,13 @@ fun BottomBar(
         UserRole.ADMIN -> listOf(
             BottomNavItem("Home", "home", Icons.Default.Home),
             BottomNavItem("Search", "search", Icons.Default.Search),
-            BottomNavItem("Post", "new_post", Icons.Default.AddCircle),
+            // ⬇️ REMOVE this line:
+            // BottomNavItem("Post", "new_post", Icons.Default.AddCircle),
             BottomNavItem("Inbox", "inbox", Icons.Default.Chat),
             BottomNavItem("Profile", "profile", Icons.Default.Person)
         )
     }
+
 
     NavigationBar(
         containerColor = MaterialTheme.colorScheme.surface,

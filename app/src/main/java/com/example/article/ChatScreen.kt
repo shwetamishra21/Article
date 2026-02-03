@@ -48,7 +48,9 @@ fun ChatScreen(
                 title = {
                     Text(
                         text = title,
-                        fontWeight = FontWeight.SemiBold
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 navigationIcon = {
@@ -60,6 +62,7 @@ fun ChatScreen(
                     }
                 }
             )
+
         }
     ) { padding ->
         Column(
@@ -80,46 +83,65 @@ fun ChatScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Empty State
-                if (uiState.messages.isEmpty() && !uiState.isLoading) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillParentMaxSize()
-                                .padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                when {
+                    uiState.isLoading && uiState.messages.isEmpty() -> {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillParentMaxSize()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = "No messages yet",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Start the conversation!",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                CircularProgressIndicator(
+                                    strokeWidth = 3.dp,
+                                    modifier = Modifier.size(40.dp)
                                 )
                             }
                         }
                     }
-                }
 
-                // Messages
-                items(
-                    items = uiState.messages,
-                    key = { it.id }
-                ) { msg ->
-                    MessageBubble(
-                        text = msg.text,
-                        isMine = msg.senderId == "demo-user"
-                    )
+                    !uiState.isLoading && uiState.messages.isEmpty() -> {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillParentMaxSize()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "No messages yet",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Start the conversation!",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    else -> {
+                        items(
+                            items = uiState.messages,
+                            key = { it.id }
+                        ) { msg ->
+                            MessageBubble(
+                                text = msg.text,
+                                isMine = msg.senderId == "demo-user"
+                            )
+                        }
+                    }
                 }
             }
+
 
             // Input Area
             Surface(
@@ -153,7 +175,6 @@ fun ChatScreen(
                         )
                     )
 
-                    // Send Button
                     IconButton(
                         onClick = {
                             if (message.isNotBlank()) {
@@ -188,6 +209,7 @@ fun ChatScreen(
                     }
                 }
             }
+
         }
     }
 }
