@@ -8,9 +8,14 @@ object FeedRepository {
 
     private val db = FirebaseFirestore.getInstance()
 
+    /* ---------- FETCH FEED (UNCHANGED) ---------- */
+
     suspend fun fetchFeed(): List<FeedItem> {
         val snapshot = db.collection("posts")
-            .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .orderBy(
+                "createdAt",
+                com.google.firebase.firestore.Query.Direction.DESCENDING
+            )
             .get()
             .await()
 
@@ -29,7 +34,6 @@ object FeedRepository {
                     author = doc.getString("authorName") ?: "Unknown",
                     content = doc.getString("content") ?: "",
                     time = doc.getLong("createdAt") ?: 0L,
-
                     likes = (doc.getLong("likes") ?: 0L).toInt(),
                     commentCount = (doc.getLong("commentCount") ?: 0L).toInt()
                 )
@@ -37,5 +41,23 @@ object FeedRepository {
                 else -> null
             }
         }
+    }
+
+    /* ---------- DELETE POST ---------- */
+
+    suspend fun deletePost(postId: String) {
+        db.collection("posts")
+            .document(postId)
+            .delete()
+            .await()
+    }
+
+    /* ---------- DELETE ANNOUNCEMENT ---------- */
+
+    suspend fun deleteAnnouncement(announcementId: String) {
+        db.collection("posts")
+            .document(announcementId)
+            .delete()
+            .await()
     }
 }

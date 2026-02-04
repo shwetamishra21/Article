@@ -33,7 +33,6 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun ArticleApp() {
-
     val navController = rememberNavController()
     val auth = remember { FirebaseAuth.getInstance() }
 
@@ -43,18 +42,14 @@ fun ArticleApp() {
     /* ---------- AUTH GATE ---------- */
 
     if (!isLoggedIn) {
-
         LoginScreen(
             onLoginSuccess = { roleString ->
                 userRole = UserRole.from(roleString)
                 isLoggedIn = true
             }
         )
-
     } else {
-
         Scaffold(
-            topBar = { TopBar() },
             bottomBar = {
                 BottomBar(
                     navController = navController,
@@ -82,11 +77,14 @@ fun ArticleApp() {
                 /* ---------- INBOX ---------- */
                 composable("inbox") {
                     InboxScreen(
-                        navController = navController
+                        navController = navController,
+                        onCreateRequest = {
+                            navController.navigate("request_form")
+                        }
                     )
                 }
 
-                /* ---------- PROFILE ---------- */
+                /* ---------- PROFILE (with Create Post navigation) ---------- */
                 composable("profile") {
                     ProfileScreen(
                         role = userRole,
@@ -94,6 +92,12 @@ fun ArticleApp() {
                             auth.signOut()
                             isLoggedIn = false
                             userRole = UserRole.MEMBER
+                        },
+                        onCreatePost = {
+                            // ✨ Navigate to new post screen from profile
+                            if (userRole != UserRole.SERVICE_PROVIDER) {
+                                navController.navigate("new_post")
+                            }
                         }
                     )
                 }
@@ -123,7 +127,7 @@ fun ArticleApp() {
                     }
                 }
 
-                /* ---------- NEW POST ---------- */
+                /* ---------- NEW POST (from Profile or direct) ---------- */
                 composable("new_post") {
                     if (userRole != UserRole.SERVICE_PROVIDER) {
                         NewPostScreen(
@@ -136,16 +140,17 @@ fun ArticleApp() {
                     }
                 }
 
-                /* ---------- COMMENTS (DAY 7 STEP 8) ---------- */
+                /* ---------- COMMENTS ---------- */
                 composable("comments/{postId}") { backStack ->
-                    val postId =
-                        backStack.arguments?.getString("postId") ?: return@composable
+                    val postId = backStack.arguments?.getString("postId") ?: return@composable
 
                     CommentScreen(
                         postId = postId,
                         onBack = { navController.popBackStack() }
                     )
                 }
+
+                /* ---------- CHAT ---------- */
                 composable("chat/{chatId}/{title}") { backStack ->
                     val chatId = backStack.arguments?.getString("chatId") ?: return@composable
                     val title = backStack.arguments?.getString("title") ?: "Chat"
@@ -156,7 +161,6 @@ fun ArticleApp() {
                         title = title
                     )
                 }
-
             }
         }
     }

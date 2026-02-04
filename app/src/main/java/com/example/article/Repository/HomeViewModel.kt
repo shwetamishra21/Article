@@ -1,17 +1,21 @@
 package com.example.article.feed
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.article.FeedItem
+import com.example.article.Repository.FeedRepository
 import com.example.article.core.UiState
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 class HomeViewModel : ViewModel() {
 
     private val firestore = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
+    private val repository = FeedRepository
 
     private val _uiState =
         MutableStateFlow<UiState<List<FeedItem>>>(UiState.Idle)
@@ -91,6 +95,36 @@ class HomeViewModel : ViewModel() {
         _uiState.value = UiState.Success(updated)
     }
 
+    /* ---------- DELETE POST ---------- */
+
+    fun deletePost(postId: String) {
+        viewModelScope.launch {
+            repository.deletePost(postId)
+
+            val current = (_uiState.value as? UiState.Success)?.data ?: return@launch
+            _uiState.value = UiState.Success(
+                current.filterNot {
+                    it is FeedItem.Post && it.id == postId
+                }
+            )
+        }
+    }
+
+    /* ---------- DELETE ANNOUNCEMENT ---------- */
+
+    fun deleteAnnouncement(announcementId: String) {
+        viewModelScope.launch {
+            repository.deleteAnnouncement(announcementId)
+
+            val current = (_uiState.value as? UiState.Success)?.data ?: return@launch
+            _uiState.value = UiState.Success(
+                current.filterNot {
+                    it is FeedItem.Announcement && it.id == announcementId
+                }
+            )
+        }
+    }
+
     /* ---------- REFRESH ---------- */
 
     fun refreshFeed() {
@@ -109,11 +143,8 @@ class HomeViewModel : ViewModel() {
 
         return when (type) {
             "post" -> {
-                val likedBy =
-                    doc.get("likedBy") as? List<*> ?: emptyList<Any>()
-
-                val likedByMe =
-                    currentUid != null && likedBy.contains(currentUid)
+                val likedBy = doc.get("likedBy") as? List<*> ?: emptyList<Any>()
+                val likedByMe = currentUid != null && likedBy.contains(currentUid)
 
                 FeedItem.Post(
                     id = doc.id,

@@ -8,14 +8,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Comment
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -26,8 +27,9 @@ import com.example.article.Repository.LikeRepository
 import com.example.article.core.UiState
 import com.example.article.feed.HomeViewModel
 
-/* ---------------- HOME SCREEN ---------------- */
+/* ---------------- HOME SCREEN WITH CUSTOM TOP BAR ---------------- */
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     navController: NavController,
@@ -39,81 +41,152 @@ fun HomeScreen(
         viewModel.loadFeed()
     }
 
-    // ← FIXED: Direct Box without nested columns
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
-                        MaterialTheme.colorScheme.background
-                    )
-                )
-            )
-    ) {
-        when (val state = uiState) {
-            UiState.Loading -> {
-                // Loading state
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.size(40.dp)
-                    )
-                }
-            }
-
-            is UiState.Error -> {
-                // Error state
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
+    Scaffold(
+        topBar = {
+            // ✨ CUSTOM ARTICLE TOP BAR WITH BLUE GRADIENT
+            TopAppBar(
+                title = {
                     Text(
-                        text = "Unable to load feed",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        text = "Article",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = Color.White,
+                        letterSpacing = 0.5.sp
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = state.message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Button(
-                        onClick = { viewModel.refreshFeed() },
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Retry")
-                    }
-                }
-            }
-
-            is UiState.Success -> {
-                // ← FIXED: Single LazyColumn with everything inside
-                FeedList(
-                    feed = state.data,
-                    navController = navController,
-                    onLoadMore = { viewModel.loadMore() },
-                    onLike = { post ->
-                        viewModel.toggleLikeOptimistic(post.id)
-                        LikeRepository.toggleLike(
-                            postId = post.id,
-                            isCurrentlyLiked = post.likedByMe
+                },
+                navigationIcon = {
+                    IconButton(onClick = { /* Notification action */ }) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Notifications",
+                            tint = Color.White
                         )
                     }
+                },
+                actions = {
+                    IconButton(onClick = { /* Profile action */ }) {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = "Account",
+                            tint = Color.White
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent
+                ),
+                modifier = Modifier
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFF42A5F5),
+                                Color(0xFF4DD0E1)
+                            )
+                        )
+                    )
+                    .shadow(
+                        elevation = 4.dp,
+                        spotColor = Color(0xFF42A5F5).copy(alpha = 0.3f)
+                    )
+            )
+        }
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(0xFF42A5F5).copy(alpha = 0.03f),
+                            Color(0xFFFAFAFA)
+                        )
+                    )
                 )
-            }
+        ) {
+            when (val state = uiState) {
+                UiState.Loading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(40.dp),
+                            color = Color(0xFF42A5F5)
+                        )
+                    }
+                }
 
-            UiState.Idle -> Unit
+                is UiState.Error -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(80.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.radialGradient(
+                                        colors = listOf(
+                                            Color(0xFFB71C1C).copy(alpha = 0.15f),
+                                            Color(0xFFB71C1C).copy(alpha = 0.05f)
+                                        )
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = "⚠️", fontSize = 40.sp)
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = "Unable to load feed",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = state.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF666666)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = { viewModel.refreshFeed() },
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Retry")
+                        }
+                    }
+                }
+
+                is UiState.Success -> {
+                    FeedList(
+                        feed = state.data,
+                        navController = navController,
+                        onLoadMore = { viewModel.loadMore() },
+                        onLike = { post ->
+                            viewModel.toggleLikeOptimistic(post.id)
+                            LikeRepository.toggleLike(
+                                postId = post.id,
+                                isCurrentlyLiked = post.likedByMe
+                            )
+                        },
+                        onDeletePost = { postId ->
+                            viewModel.deletePost(postId)
+                        },
+                        onDeleteAnnouncement = { announcementId ->
+                            viewModel.deleteAnnouncement(announcementId)
+                        }
+                    )
+                }
+
+                UiState.Idle -> Unit
+            }
         }
     }
 }
@@ -125,34 +198,65 @@ private fun FeedList(
     feed: List<FeedItem>,
     navController: NavController,
     onLoadMore: () -> Unit,
-    onLike: (FeedItem.Post) -> Unit
+    onLike: (FeedItem.Post) -> Unit,
+    onDeletePost: (String) -> Unit,
+    onDeleteAnnouncement: (String) -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(), // ← CRITICAL: fillMaxSize here
-        contentPadding = PaddingValues(
-            top = 8.dp,
-            bottom = 100.dp
-        ),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 100.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Header inside LazyColumn
+        // ✨ HEADER - Always on top
         item(key = "header") {
             HomeHeader()
         }
 
-        // Empty state
-        if (feed.isEmpty()) {
+        // 📢 ANNOUNCEMENTS - Pinned above posts
+        val announcements = feed.filterIsInstance<FeedItem.Announcement>()
+        if (announcements.isNotEmpty()) {
+            items(
+                items = announcements,
+                key = { "announcement_${it.id}" }
+            ) { announcement ->
+                AnnouncementCard(
+                    announcement = announcement,
+                    onDelete = { onDeleteAnnouncement(announcement.id) }
+                )
+            }
+        }
+
+        // 📝 POSTS - Below announcements
+        val posts = feed.filterIsInstance<FeedItem.Post>()
+
+        if (posts.isEmpty()) {
             item(key = "empty") {
                 Box(
                     modifier = Modifier
-                        .fillParentMaxSize()
+                        .fillMaxWidth()
                         .padding(48.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(80.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.radialGradient(
+                                        colors = listOf(
+                                            Color(0xFF42A5F5).copy(alpha = 0.15f),
+                                            Color(0xFF42A5F5).copy(alpha = 0.05f)
+                                        )
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = "📝", fontSize = 40.sp)
+                        }
                         Text(
                             text = "No posts yet",
                             style = MaterialTheme.typography.titleMedium,
@@ -161,31 +265,23 @@ private fun FeedList(
                         Text(
                             text = "Be the first to share!",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Color(0xFF666666)
                         )
                     }
                 }
             }
-        }
-
-        // Feed items
-        items(
-            items = feed,
-            key = { item ->
-                when (item) {
-                    is FeedItem.Post -> "post_${item.id}"
-                    is FeedItem.Announcement -> "announcement_${item.id}"
-                }
-            }
-        ) { item ->
-            when (item) {
-                is FeedItem.Announcement -> AnnouncementCard(item)
-                is FeedItem.Post -> PostCard(
-                    item = item,
-                    onLike = { onLike(item) },
+        } else {
+            items(
+                items = posts,
+                key = { "post_${it.id}" }
+            ) { post ->
+                PostCard(
+                    item = post,
+                    onLike = { onLike(post) },
                     onComment = {
-                        navController.navigate("comments/${item.id}")
-                    }
+                        navController.navigate("comments/${post.id}")
+                    },
+                    onDelete = { onDeletePost(post.id) }
                 )
             }
         }
@@ -199,94 +295,199 @@ private fun FeedList(
     }
 }
 
-/* ---------------- HEADER ---------------- */
+/* ---------------- PREMIUM HEADER ---------------- */
 
 @Composable
 private fun HomeHeader() {
-    Box(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
-            .background(
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.primary,
-                        MaterialTheme.colorScheme.secondary
-                    )
-                ),
-                shape = RoundedCornerShape(20.dp)
-            )
-            .padding(24.dp)
+            .padding(20.dp),
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = "Good day 👋",
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 0.3.sp
-            )
-            Text(
-                text = "Your Neighborhood",
-                color = MaterialTheme.colorScheme.onPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.5.sp
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = "Stay updated with your community",
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
-                fontSize = 13.sp
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF42A5F5),
+                            Color(0xFF4DD0E1)
+                        )
+                    )
+                )
+                .padding(24.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Good day 👋",
+                    color = Color.White.copy(alpha = 0.95f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.5.sp
+                )
+                Text(
+                    text = "Your Neighborhood",
+                    color = Color.White,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Stay updated with your community",
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 13.sp
+                )
+            }
         }
     }
 }
 
-/* ---------------- ANNOUNCEMENT ---------------- */
+/* ---------------- ANNOUNCEMENT CARD WITH DELETE ---------------- */
 
 @Composable
-private fun AnnouncementCard(item: FeedItem.Announcement) {
+private fun AnnouncementCard(
+    announcement: FeedItem.Announcement,
+    onDelete: () -> Unit
+) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier
             .padding(horizontal = 20.dp)
             .fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            containerColor = Color.White
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = 0.dp
+            defaultElevation = 2.dp,
+            pressedElevation = 4.dp
         )
     ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF42A5F5).copy(alpha = 0.12f),
+                            Color(0xFF4DD0E1).copy(alpha = 0.08f)
+                        )
+                    )
+                )
+                .padding(20.dp)
         ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = item.message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                lineHeight = 20.sp
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Title row with menu
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = announcement.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF1a1a1a),
+                            fontSize = 15.sp
+                        )
+                    }
+
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                tint = Color(0xFF666666),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Delete") },
+                                onClick = {
+                                    showMenu = false
+                                    showDeleteDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = null,
+                                        tint = Color(0xFFB71C1C)
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = announcement.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF666666),
+                    lineHeight = 20.sp,
+                    fontSize = 14.sp
+                )
+            }
         }
+    }
+
+    // Delete confirmation dialog
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete Announcement") },
+            text = { Text("Are you sure you want to delete this announcement?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = Color(0xFFB71C1C)
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 
-/* ---------------- POST CARD ---------------- */
+/* ---------------- POST CARD WITH DELETE ---------------- */
 
 @Composable
 private fun PostCard(
     item: FeedItem.Post,
     onLike: () -> Unit,
-    onComment: () -> Unit
+    onComment: () -> Unit,
+    onDelete: () -> Unit
 ) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier
             .padding(horizontal = 20.dp)
@@ -297,63 +498,115 @@ private fun PostCard(
             pressedElevation = 4.dp
         ),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = Color.White
         )
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Author
+            // Author Row with menu
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        text = item.author.first().uppercase(),
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFF42A5F5).copy(alpha = 0.15f),
+                                        Color(0xFF4DD0E1).copy(alpha = 0.15f)
+                                    )
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = item.author.firstOrNull()?.uppercase() ?: "?",
+                            color = Color(0xFF42A5F5),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = item.author,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "Just now",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF666666),
+                            fontSize = 12.sp
+                        )
+                    }
                 }
 
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = item.author,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "Just now",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp
-                    )
+                Box {
+                    IconButton(
+                        onClick = { showMenu = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "More options",
+                            tint = Color(0xFF666666),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Delete") },
+                            onClick = {
+                                showMenu = false
+                                showDeleteDialog = true
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = Color(0xFFB71C1C)
+                                )
+                            }
+                        )
+                    }
                 }
             }
 
             // Content
             Text(
                 text = item.content,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyMedium,
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis,
-                lineHeight = 22.sp
+                lineHeight = 22.sp,
+                fontSize = 15.sp,
+                color = Color(0xFF1a1a1a)
             )
 
+            // Divider
             HorizontalDivider(
-                thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                thickness = 1.dp,
+                color = Color(0xFF42A5F5).copy(alpha = 0.2f)
             )
 
-            // Actions
+            // Actions Row
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -370,9 +623,9 @@ private fun PostCard(
                             Icons.Filled.FavoriteBorder,
                         contentDescription = "Like",
                         tint = if (item.likedByMe)
-                            MaterialTheme.colorScheme.primary
+                            Color(0xFF42A5F5)
                         else
-                            MaterialTheme.colorScheme.onSurfaceVariant,
+                            Color(0xFF666666),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -381,8 +634,9 @@ private fun PostCard(
                     Text(
                         text = "${item.likes}",
                         style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        color = Color(0xFF666666)
                     )
                 }
 
@@ -395,7 +649,7 @@ private fun PostCard(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Comment,
                         contentDescription = "Comment",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = Color(0xFF666666),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -403,10 +657,38 @@ private fun PostCard(
                 Text(
                     text = "${item.commentCount}",
                     style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    color = Color(0xFF666666)
                 )
             }
         }
+    }
+
+    // Delete confirmation dialog
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete Post") },
+            text = { Text("Are you sure you want to delete this post?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteDialog = false
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = Color(0xFFB71C1C)
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

@@ -14,6 +14,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,32 +47,50 @@ fun ChatScreen(
 
     Scaffold(
         topBar = {
+            // ✨ PREMIUM BLUE GRADIENT TOP BAR
             TopAppBar(
                 title = {
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        fontSize = 18.sp,
+                        color = Color.White
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
                             Icons.Default.ArrowBack,
-                            contentDescription = "Back"
+                            contentDescription = "Back",
+                            tint = Color.White
                         )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent
+                ),
+                modifier = Modifier
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFF42A5F5),
+                                Color(0xFF4DD0E1)
+                            )
+                        )
+                    )
+                    .shadow(
+                        elevation = 4.dp,
+                        spotColor = Color(0xFF42A5F5).copy(alpha = 0.3f)
+                    )
             )
-
         }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.background)
+                .background(Color(0xFFFAFAFA))
         ) {
             // Messages List
             LazyColumn(
@@ -85,7 +106,7 @@ fun ChatScreen(
             ) {
                 when {
                     uiState.isLoading && uiState.messages.isEmpty() -> {
-                        item {
+                        item(key = "loading") {
                             Box(
                                 modifier = Modifier
                                     .fillParentMaxSize()
@@ -94,14 +115,15 @@ fun ChatScreen(
                             ) {
                                 CircularProgressIndicator(
                                     strokeWidth = 3.dp,
-                                    modifier = Modifier.size(40.dp)
+                                    modifier = Modifier.size(40.dp),
+                                    color = Color(0xFF42A5F5)
                                 )
                             }
                         }
                     }
 
                     !uiState.isLoading && uiState.messages.isEmpty() -> {
-                        item {
+                        item(key = "empty") {
                             Box(
                                 modifier = Modifier
                                     .fillParentMaxSize()
@@ -110,18 +132,42 @@ fun ChatScreen(
                             ) {
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
+                                    // Empty state icon
+                                    Box(
+                                        modifier = Modifier
+                                            .size(64.dp)
+                                            .clip(RoundedCornerShape(50))
+                                            .background(
+                                                Brush.radialGradient(
+                                                    colors = listOf(
+                                                        Color(0xFF42A5F5).copy(alpha = 0.1f),
+                                                        Color(0xFF42A5F5).copy(alpha = 0.05f)
+                                                    )
+                                                )
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Send,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(32.dp),
+                                            tint = Color(0xFF42A5F5).copy(alpha = 0.6f)
+                                        )
+                                    }
+
                                     Text(
                                         text = "No messages yet",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        fontSize = 18.sp
                                     )
                                     Text(
                                         text = "Start the conversation!",
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = Color(0xFF666666),
+                                        fontSize = 14.sp
                                     )
                                 }
                             }
@@ -142,20 +188,21 @@ fun ChatScreen(
                 }
             }
 
-
-            // Input Area
+            // ✨ PREMIUM INPUT AREA - Elevated with Blue Glow
             Surface(
                 tonalElevation = 3.dp,
                 shadowElevation = 2.dp,
-                color = MaterialTheme.colorScheme.surface
+                color = Color.White.copy(alpha = 0.98f),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // Text input with premium blue border
                     OutlinedTextField(
                         value = message,
                         onValueChange = { message = it },
@@ -163,18 +210,23 @@ fun ChatScreen(
                         placeholder = {
                             Text(
                                 text = "Type a message…",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                color = Color(0xFF666666).copy(alpha = 0.6f),
+                                fontSize = 15.sp
                             )
                         },
                         shape = RoundedCornerShape(24.dp),
                         singleLine = false,
                         maxLines = 4,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                        )
+                            focusedBorderColor = Color(0xFF42A5F5),
+                            unfocusedBorderColor = Color(0xFF42A5F5).copy(alpha = 0.2f),
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        ),
+                        textStyle = LocalTextStyle.current.copy(fontSize = 15.sp)
                     )
 
+                    // ✨ PREMIUM SEND BUTTON - Blue Gradient Glow
                     IconButton(
                         onClick = {
                             if (message.isNotBlank()) {
@@ -192,27 +244,38 @@ fun ChatScreen(
                             .clip(RoundedCornerShape(24.dp))
                             .background(
                                 if (message.isNotBlank())
-                                    MaterialTheme.colorScheme.primary
+                                    Brush.linearGradient(
+                                        colors = listOf(
+                                            Color(0xFF42A5F5),
+                                            Color(0xFF4DD0E1)
+                                        )
+                                    )
                                 else
-                                    MaterialTheme.colorScheme.surfaceVariant
+                                    Brush.linearGradient(
+                                        colors = listOf(
+                                            Color(0xFFE0E0E0),
+                                            Color(0xFFE0E0E0)
+                                        )
+                                    )
                             )
                     ) {
                         Icon(
                             imageVector = Icons.Default.Send,
                             contentDescription = "Send",
                             tint = if (message.isNotBlank())
-                                MaterialTheme.colorScheme.onPrimary
+                                Color.White
                             else
-                                MaterialTheme.colorScheme.onSurfaceVariant,
+                                Color(0xFF666666),
                             modifier = Modifier.size(20.dp)
                         )
                     }
                 }
             }
-
         }
     }
 }
+
+/* ---------- PREMIUM MESSAGE BUBBLE - Blue Glow for "Mine" Messages ---------- */
 
 @Composable
 private fun MessageBubble(
@@ -224,7 +287,7 @@ private fun MessageBubble(
         horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
     ) {
         Surface(
-            modifier = Modifier.widthIn(max = 280.dp), // ← MAX WIDTH for bubbles
+            modifier = Modifier.widthIn(max = 280.dp),
             shape = RoundedCornerShape(
                 topStart = 20.dp,
                 topEnd = 20.dp,
@@ -232,25 +295,41 @@ private fun MessageBubble(
                 bottomEnd = if (isMine) 4.dp else 20.dp
             ),
             color = if (isMine)
-                MaterialTheme.colorScheme.primary
+                Color(0xFF42A5F5)
             else
-                MaterialTheme.colorScheme.surfaceVariant,
+                Color.White,
             tonalElevation = if (isMine) 0.dp else 1.dp,
-            shadowElevation = 1.dp
+            shadowElevation = if (isMine) 2.dp else 1.dp
         ) {
-            Text(
-                text = text,
-                modifier = Modifier.padding(
-                    horizontal = 16.dp,
-                    vertical = 12.dp
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (isMine)
-                    MaterialTheme.colorScheme.onPrimary
-                else
-                    MaterialTheme.colorScheme.onSurface,
-                lineHeight = 20.sp
-            )
+            Box(
+                modifier = if (isMine) {
+                    Modifier.background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFF42A5F5),
+                                Color(0xFF4DD0E1)
+                            )
+                        )
+                    )
+                } else {
+                    Modifier
+                }
+            ) {
+                Text(
+                    text = text,
+                    modifier = Modifier.padding(
+                        horizontal = 16.dp,
+                        vertical = 12.dp
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isMine)
+                        Color.White
+                    else
+                        Color(0xFF1a1a1a),
+                    lineHeight = 20.sp,
+                    fontSize = 15.sp
+                )
+            }
         }
     }
 }
