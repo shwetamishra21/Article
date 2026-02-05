@@ -382,7 +382,6 @@ private fun AnnouncementCard(
                 .padding(20.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Title row with menu
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
