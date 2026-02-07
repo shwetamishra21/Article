@@ -6,12 +6,13 @@ sealed class FeedItem {
         val id: String,
         val author: String,
         val content: String,
-        val likes: Int,
-
-        val commentCount: Int,
         val time: Long,
-        val likedByMe: Boolean = false
+        val likes: Int,
+        val commentCount: Int,
+        val likedByMe: Boolean,
+        val imageUrl: String?    // ✅ ADD
     ) : FeedItem()
+
 
     data class Announcement(
         val id: String,

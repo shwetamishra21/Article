@@ -4,6 +4,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import com.google.firebase.storage.FirebaseStorage
+import kotlinx.coroutines.tasks.await
+import kotlinx. coroutines. launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -41,7 +44,10 @@ fun NewPostScreen(
     viewModel: HomeViewModel = viewModel()
 ) {
     val auth = FirebaseAuth.getInstance()
+    val storage = FirebaseStorage.getInstance()
     val firestore = FirebaseFirestore.getInstance()
+    val scope = rememberCoroutineScope()   // ✅ ADD THIS LINE
+
 
     var selectedType by remember { mutableStateOf(PostType.POST) }
     var content by remember { mutableStateOf("") }
@@ -328,7 +334,8 @@ fun NewPostScreen(
                                     time = timestamp,
                                     likes = 0,
                                     commentCount = 0,
-                                    likedByMe = false
+                                    likedByMe = false,
+                                    imageUrl = imageUri?.toString()
                                 )
                             )
                         }
@@ -346,28 +353,58 @@ fun NewPostScreen(
 
                     // Firestore write
                     val postData = hashMapOf(
-                        "type" to selectedType.name.lowercase(),
+                        "type" to selectedType.name.lowercase(), // "post" | "announcement"
                         "content" to content,
-                        "title" to if (selectedType == PostType.ANNOUNCEMENT) title else "",
-                        "authorName" to (user.email ?: "User"),
+                        "title" to if (selectedType == PostType.ANNOUNCEMENT) title else null,
                         "authorId" to user.uid,
+                        "authorName" to (user.email ?: "User"),
+
+                        // 🔐 LIKE SYSTEM (MAP ONLY)
                         "likes" to 0,
+                        "likedBy" to emptyMap<String, Boolean>(),
+
+                        // 💬 COMMENTS
                         "commentCount" to 0,
-                        "hasImage" to (imageUri != null),
+
+                        // 🖼 IMAGE (stub for now — upload comes later)
+                        "imageUrl" to null,
+
+                        // ⏱ TIME (server-agnostic, consistent)
                         "createdAt" to com.google.firebase.Timestamp.now()
                     )
 
-                    firestore.collection("posts")
-                        .document(id)
-                        .set(postData)
-                        .addOnSuccessListener {
+
+                    scope.launch {
+                        try {
+                            var imageUrl: String? = null
+
+                            // 🖼 Upload image if present
+                            if (imageUri != null) {
+                                val ref = storage.reference
+                                    .child("post_images/$id.jpg")
+
+                                ref.putFile(imageUri!!).await()
+                                imageUrl = ref.downloadUrl.await().toString()
+                            }
+
+                            // 🔁 Inject imageUrl into existing postData
+                            val finalPostData = postData.toMutableMap().apply {
+                                this["imageUrl"] = imageUrl
+                            }
+
+                            firestore.collection("posts")
+                                .document(id)
+                                .set(finalPostData)
+
                             loading = false
                             onPostUploaded()
-                        }
-                        .addOnFailureListener { exception ->
+
+                        } catch (e: Exception) {
                             loading = false
-                            error = exception.localizedMessage ?: "Failed to post"
+                            error = e.localizedMessage ?: "Failed to post"
                         }
+                    }
+
                 },
                 enabled = isEnabled,
                 modifier = Modifier

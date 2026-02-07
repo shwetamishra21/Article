@@ -10,6 +10,7 @@ import com.google.firebase.firestore.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java. security. Timestamp
 
 class HomeViewModel : ViewModel() {
 
@@ -36,15 +37,23 @@ class HomeViewModel : ViewModel() {
         listener = firestore.collection("posts")
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .limit(PAGE_SIZE.toLong())
-            .addSnapshotListener { snapshot, _ ->
+            .addSnapshotListener { snapshot, error ->
+
+                if (error != null) {
+                    _uiState.value =
+                        UiState.Error(error.message ?: "Firestore error")
+                    return@addSnapshotListener
+                }
 
                 if (snapshot == null) {
-                    _uiState.value = UiState.Error("Failed to load feed")
+                    _uiState.value = UiState.Error("No data")
                     return@addSnapshotListener
                 }
 
                 val items = snapshot.documents.mapNotNull { mapDoc(it) }
+
                 lastVisible = snapshot.documents.lastOrNull()
+
                 _uiState.value = UiState.Success(items)
             }
     }
@@ -95,33 +104,23 @@ class HomeViewModel : ViewModel() {
         _uiState.value = UiState.Success(updated)
     }
 
-    /* ---------- DELETE POST ---------- */
+    /* ---------- DELETE ---------- */
 
     fun deletePost(postId: String) {
         viewModelScope.launch {
             repository.deletePost(postId)
-
             val current = (_uiState.value as? UiState.Success)?.data ?: return@launch
-            _uiState.value = UiState.Success(
-                current.filterNot {
-                    it is FeedItem.Post && it.id == postId
-                }
-            )
+            _uiState.value =
+                UiState.Success(current.filterNot { it is FeedItem.Post && it.id == postId })
         }
     }
-
-    /* ---------- DELETE ANNOUNCEMENT ---------- */
 
     fun deleteAnnouncement(announcementId: String) {
         viewModelScope.launch {
             repository.deleteAnnouncement(announcementId)
-
             val current = (_uiState.value as? UiState.Success)?.data ?: return@launch
-            _uiState.value = UiState.Success(
-                current.filterNot {
-                    it is FeedItem.Announcement && it.id == announcementId
-                }
-            )
+            _uiState.value =
+                UiState.Success(current.filterNot { it is FeedItem.Announcement && it.id == announcementId })
         }
     }
 
@@ -138,13 +137,25 @@ class HomeViewModel : ViewModel() {
 
     private fun mapDoc(doc: DocumentSnapshot): FeedItem? {
         val type = doc.getString("type") ?: return null
-        val time = doc.getLong("createdAt") ?: 0L
+
+        val time = when {
+            doc.get("createdAt") is com.google.firebase.Timestamp ->
+                (doc.get("createdAt") as com.google.firebase.Timestamp).toDate().time
+
+            doc.get("createdAt") is Long ->
+                doc.getLong("createdAt") ?: 0L
+
+            else -> 0L
+        }
         val currentUid = auth.currentUser?.uid
 
         return when (type) {
             "post" -> {
-                val likedBy = doc.get("likedBy") as? List<*> ?: emptyList<Any>()
-                val likedByMe = currentUid != null && likedBy.contains(currentUid)
+                val likedBy =
+                    doc.get("likedBy") as? Map<*, *> ?: emptyMap<Any, Any>()
+
+                val likedByMe =
+                    currentUid != null && likedBy.containsKey(currentUid)
 
                 FeedItem.Post(
                     id = doc.id,
@@ -153,7 +164,8 @@ class HomeViewModel : ViewModel() {
                     time = time,
                     likes = (doc.getLong("likes") ?: 0L).toInt(),
                     commentCount = (doc.getLong("commentCount") ?: 0L).toInt(),
-                    likedByMe = likedByMe
+                    likedByMe = likedByMe,
+                    imageUrl = doc.getString("imageUrl")
                 )
             }
 

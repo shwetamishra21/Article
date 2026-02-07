@@ -4,13 +4,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx. compose. ui. layout. ContentScale
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import coil. compose. rememberAsyncImagePainter
 import androidx.compose.runtime.*
+import androidx. compose. foundation. Image
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -169,7 +172,17 @@ fun HomeScreen(
                     )
                 }
 
-                UiState.Idle -> Unit
+                UiState.Idle -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = Color(0xFF42A5F5)
+                        )
+                    }
+                }
+
             }
         }
     }
@@ -501,6 +514,21 @@ private fun PostCard(
                 overflow = TextOverflow.Ellipsis,
                 color = Color(0xFF1a1a1a)
             )
+
+            if (!item.imageUrl.isNullOrBlank()) {
+                Spacer(Modifier.height(6.dp))
+
+                Image(
+                    painter = rememberAsyncImagePainter(item.imageUrl),
+                    contentDescription = "Post image",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
 
             HorizontalDivider(
                 thickness = 1.dp,

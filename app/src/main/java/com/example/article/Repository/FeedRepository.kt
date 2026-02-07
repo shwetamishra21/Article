@@ -3,6 +3,8 @@ package com.example.article.Repository
 import com.example.article.FeedItem
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
+import com.google.firebase.auth.FirebaseAuth
+
 
 object FeedRepository {
 
@@ -29,14 +31,27 @@ object FeedRepository {
                     time = doc.getLong("createdAt") ?: 0L
                 )
 
-                "post" -> FeedItem.Post(
-                    id = doc.id,
-                    author = doc.getString("authorName") ?: "Unknown",
-                    content = doc.getString("content") ?: "",
-                    time = doc.getLong("createdAt") ?: 0L,
-                    likes = (doc.getLong("likes") ?: 0L).toInt(),
-                    commentCount = (doc.getLong("commentCount") ?: 0L).toInt()
-                )
+                "post" -> {
+                    val currentUid = FirebaseAuth.getInstance().currentUser?.uid
+
+                    val likedBy =
+                        doc.get("likedBy") as? Map<*, *> ?: emptyMap<Any, Any>()
+
+                    val likedByMe =
+                        currentUid != null && likedBy.containsKey(currentUid)
+
+                    FeedItem.Post(
+                        id = doc.id,
+                        author = doc.getString("authorName") ?: "Unknown",
+                        content = doc.getString("content") ?: "",
+                        time = doc.getLong("createdAt") ?: 0L,
+                        likes = (doc.getLong("likes") ?: 0L).toInt(),
+                        commentCount = (doc.getLong("commentCount") ?: 0L).toInt(),
+                        likedByMe = likedByMe,
+                        imageUrl = doc.getString("imageUrl")
+                    )
+                }
+
 
                 else -> null
             }
