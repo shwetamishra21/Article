@@ -8,7 +8,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AssignmentLate
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,72 +21,66 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
-
-/* ---------- MODEL ---------- */
+import kotlinx.coroutines.tasks.await
 
 data class ServiceRequest(
     val id: String = "",
+    val serviceType: String = "",
     val title: String = "",
-    val category: String = "",
-    val status: String = "pending",
-    val date: String = ""
+    val description: String = "",
+    val date: String = "",
+    val status: String = "Pending",
+    val createdBy: String = "",
+    val createdAt: Long = 0L
 )
-
-/* ---------- SCREEN ---------- */
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RequestsScreen(
     onCreateNew: () -> Unit
 ) {
-    val auth = FirebaseAuth.getInstance()
-    val firestore = FirebaseFirestore.getInstance()
-    val user = auth.currentUser
-
     var requests by remember { mutableStateOf<List<ServiceRequest>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
 
-    /* ---------- REALTIME LISTENER ---------- */
-    DisposableEffect(Unit) {
-        if (user == null) {
+    val auth = FirebaseAuth.getInstance()
+    val firestore = FirebaseFirestore.getInstance()
+
+    LaunchedEffect(Unit) {
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            error = "Not authenticated"
             loading = false
-            return@DisposableEffect onDispose {}
+            return@LaunchedEffect
         }
 
-        val listener: ListenerRegistration =
-            firestore.collection("requests")
-                .whereEqualTo("createdBy", user.uid)
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        loading = false
-                        return@addSnapshotListener
-                    }
+        try {
+            val snapshot = firestore.collection("service_requests")
+                .whereEqualTo("createdBy", userId)
+                .get()
+                .await()
 
-                    if (snapshot != null) {
-                        requests = snapshot.documents.mapNotNull { doc ->
-                            try {
-                                ServiceRequest(
-                                    id = doc.id,
-                                    title = doc.getString("title") ?: "",
-                                    category = doc.getString("serviceType") ?: "",
-                                    status = doc.getString("status") ?: "pending",
-                                    date = doc.getString("date") ?: ""
-                                )
-                            } catch (e: Exception) {
-                                null
-                            }
-                        }
-                        loading = false
-                    }
+            requests = snapshot.documents.mapNotNull { doc ->
+                try {
+                    ServiceRequest(
+                        id = doc.id,
+                        serviceType = doc.getString("serviceType") ?: "",
+                        title = doc.getString("title") ?: "",
+                        description = doc.getString("description") ?: "",
+                        date = doc.getString("date") ?: "",
+                        status = doc.getString("status") ?: "Pending",
+                        createdBy = doc.getString("createdBy") ?: "",
+                        createdAt = doc.getLong("createdAt") ?: 0L
+                    )
+                } catch (e: Exception) {
+                    null
                 }
+            }.sortedByDescending { it.createdAt }
 
-        onDispose {
-            try {
-                listener.remove()
-            } catch (e: Exception) {
-                // Ignore disposal errors
-            }
+            loading = false
+        } catch (e: Exception) {
+            error = e.localizedMessage ?: "Failed to load requests"
+            loading = false
         }
     }
 
@@ -96,58 +89,32 @@ fun RequestsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "My Requests",
+                        "Service Requests",
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 18.sp
+                        fontSize = 19.sp
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                modifier = Modifier.shadow(
-                    elevation = 4.dp,
-                    spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         },
         floatingActionButton = {
-            // ✨ PREMIUM FAB WITH BLUE GLOW & ROTATION
             FloatingActionButton(
                 onClick = onCreateNew,
                 shape = RoundedCornerShape(16.dp),
-                containerColor = Color.Transparent,
-                elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 6.dp,
-                    pressedElevation = 8.dp
-                ),
+                containerColor = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.shadow(
-                    elevation = 20.dp,
+                    elevation = 8.dp,
                     shape = RoundedCornerShape(16.dp),
-                    spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-                    ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                    spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
                 )
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF42A5F5),
-                                    Color(0xFF4DD0E1)
-                                )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "Create request",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Create request",
+                    tint = Color.White
+                )
             }
         }
     ) { padding ->
@@ -158,60 +125,67 @@ fun RequestsScreen(
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            Color(0xFF42A5F5).copy(alpha = 0.03f),
-                            Color(0xFFFAFAFA)
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.03f),
+                            MaterialTheme.colorScheme.background
                         )
                     )
                 )
         ) {
-            if (loading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.size(40.dp),
-                        color = Color(0xFF42A5F5)
-                    )
-                }
-            } else if (requests.isEmpty()) {
-                EmptyRequestsState(onCreateNew)
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = 16.dp,
-                        bottom = 100.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(
-                        items = requests,
-                        key = { it.id }
-                    ) { request ->
-                        RequestCard(
-                            request = request,
-                            onCancel = {
-                                try {
-                                    firestore.collection("requests")
-                                        .document(request.id)
-                                        .update("status", "cancelled")
-                                } catch (e: Exception) {
-                                    // Handle error silently
-                                }
-                            },
-                            onComplete = {
-                                try {
-                                    firestore.collection("requests")
-                                        .document(request.id)
-                                        .update("status", "completed")
-                                } catch (e: Exception) {
-                                    // Handle error silently
-                                }
-                            }
+            when {
+                loading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(40.dp),
+                            color = MaterialTheme.colorScheme.primary
                         )
+                    }
+                }
+
+                error != null -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(text = "⚠️", fontSize = 40.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Unable to load requests",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            error ?: "Unknown error",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                requests.isEmpty() -> {
+                    EmptyRequestsState(onCreateNew)
+                }
+
+                else -> {
+                    LazyColumn(
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 16.dp,
+                            bottom = 100.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(requests, key = { it.id }) { request ->
+                            RequestCard(request)
+                        }
                     }
                 }
             }
@@ -219,272 +193,176 @@ fun RequestsScreen(
     }
 }
 
-/* ---------- PREMIUM REQUEST CARD WITH BLUE GLOW ---------- */
-
 @Composable
-private fun RequestCard(
-    request: ServiceRequest,
-    onCancel: () -> Unit,
-    onComplete: () -> Unit
-) {
+private fun RequestCard(request: ServiceRequest) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(
-                elevation = 8.dp,
-                shape = RoundedCornerShape(16.dp),
-                spotColor = Color(0xFF42A5F5).copy(alpha = 0.08f),
-                ambientColor = Color(0xFF42A5F5).copy(alpha = 0.04f)
-            ),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White
-        ),
-        border = androidx.compose.foundation.BorderStroke(
-            width = 1.dp,
-            color = Color(0xFF42A5F5).copy(alpha = 0.08f)
-        )
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Title
-            Text(
-                text = request.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp,
-                color = Color(0xFF1a1a1a)
-            )
-
-            // Meta info
-            Text(
-                text = "${request.category} • ${request.date}",
-                style = MaterialTheme.typography.bodySmall,
-                fontSize = 13.sp,
-                color = Color(0xFF666666)
-            )
-
-            // ✨ PREMIUM GRADIENT DIVIDER
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(
-                        Brush.horizontalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color(0xFF42A5F5).copy(alpha = 0.15f),
-                                Color.Transparent
-                            )
-                        )
-                    )
-            )
-
-            // Status and Action
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                StatusChipPremium(request.status)
+                Text(
+                    text = request.title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF1a1a1a),
+                    modifier = Modifier.weight(1f)
+                )
 
-                when (request.status) {
-                    "pending" -> {
-                        TextButton(
-                            onClick = onCancel,
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = Color(0xFFB71C1C)
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = "Cancel",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
-                            )
+                // ✨ IMPROVED STATUS CHIP - Matches cancel button style
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = when (request.status) {
+                        "Pending" -> Color(0xFFFF9800).copy(alpha = 0.15f)
+                        "Accepted" -> Color(0xFF4CAF50).copy(alpha = 0.15f)
+                        "Completed" -> Color(0xFF42A5F5).copy(alpha = 0.15f)
+                        "Cancelled" -> Color(0xFFB71C1C).copy(alpha = 0.15f)
+                        else -> Color(0xFF666666).copy(alpha = 0.15f)
+                    },
+                    shadowElevation = 1.dp
+                ) {
+                    Text(
+                        text = request.status,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = when (request.status) {
+                            "Pending" -> Color(0xFFFF9800)
+                            "Accepted" -> Color(0xFF4CAF50)
+                            "Completed" -> Color(0xFF42A5F5)
+                            "Cancelled" -> Color(0xFFB71C1C)
+                            else -> Color(0xFF666666)
                         }
-                    }
+                    )
+                }
+            }
 
-                    "accepted" -> {
-                        TextButton(
-                            onClick = onComplete,
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = Color(0xFF42A5F5)
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = "Mark Complete",
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = request.serviceType,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
 
-                    else -> {
-                        // No action for completed or cancelled
+                Text(
+                    text = "•",
+                    fontSize = 11.sp,
+                    color = Color(0xFF666666)
+                )
+
+                Text(
+                    text = request.date,
+                    fontSize = 11.sp,
+                    color = Color(0xFF666666)
+                )
+            }
+
+            Text(
+                text = request.description,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                color = Color(0xFF666666),
+                maxLines = 2
+            )
+
+            if (request.status == "Pending") {
+                HorizontalDivider(
+                    thickness = 1.dp,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = { /* Cancel request */ },
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            "Cancel Request",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFB71C1C)
+                        )
                     }
                 }
             }
         }
     }
 }
-
-/* ---------- PREMIUM STATUS CHIP WITH COLORED GLOW ---------- */
-
-@Composable
-private fun StatusChipPremium(status: String) {
-    val (label, bgColor, textColor) = when (status) {
-        "pending" -> Triple(
-            "Pending",
-            Color(0xFFFFA000).copy(alpha = 0.15f),
-            Color(0xFFFFA000)
-        )
-        "accepted" -> Triple(
-            "Accepted",
-            Color(0xFF2E7D32).copy(alpha = 0.15f),
-            Color(0xFF2E7D32)
-        )
-        "completed" -> Triple(
-            "Completed",
-            Color(0xFF1565C0).copy(alpha = 0.15f),
-            Color(0xFF1565C0)
-        )
-        "cancelled" -> Triple(
-            "Cancelled",
-            Color(0xFFB71C1C).copy(alpha = 0.15f),
-            Color(0xFFB71C1C)
-        )
-        else -> Triple(
-            "Unknown",
-            Color.Gray.copy(alpha = 0.15f),
-            Color.Gray
-        )
-    }
-
-    Surface(
-        color = bgColor,
-        shape = RoundedCornerShape(8.dp),
-        shadowElevation = 2.dp,
-        modifier = Modifier.shadow(
-            elevation = 8.dp,
-            shape = RoundedCornerShape(8.dp),
-            spotColor = textColor.copy(alpha = 0.2f)
-        )
-    ) {
-        Text(
-            text = label,
-            color = textColor,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-        )
-    }
-}
-
-/* ---------- PREMIUM EMPTY STATE WITH BLUE GLOW ---------- */
 
 @Composable
 private fun EmptyRequestsState(onCreateNew: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(48.dp),
+            .padding(32.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // ✨ PREMIUM EMPTY ICON WITH BLUE GLOW
             Box(
                 modifier = Modifier
                     .size(80.dp)
-                    .shadow(
-                        elevation = 16.dp,
-                        shape = CircleShape,
-                        spotColor = Color(0xFF42A5F5).copy(alpha = 0.15f)
-                    )
                     .clip(CircleShape)
                     .background(
                         Brush.radialGradient(
                             colors = listOf(
-                                Color(0xFF42A5F5).copy(alpha = 0.1f),
-                                Color(0xFF4DD0E1).copy(alpha = 0.05f)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
                             )
                         )
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.AssignmentLate,
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp),
-                    tint = Color(0xFF42A5F5).copy(alpha = 0.6f)
-                )
+                Text(text = "📋", fontSize = 40.sp)
             }
+
+            Text(
+                text = "No service requests",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Text(
+                text = "Create your first request to get started",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             Spacer(Modifier.height(8.dp))
 
-            Text(
-                text = "No requests yet",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 18.sp,
-                color = Color(0xFF1a1a1a)
-            )
-
-            Text(
-                text = "Create a request to connect with\nservice providers",
-                style = MaterialTheme.typography.bodyMedium,
-                fontSize = 14.sp,
-                color = Color(0xFF666666),
-                lineHeight = 20.sp
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            // ✨ PREMIUM GRADIENT BUTTON WITH GLOW
             Button(
                 onClick = onCreateNew,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.Transparent
-                ),
-                contentPadding = PaddingValues(0.dp),
-                elevation = ButtonDefaults.buttonElevation(
-                    defaultElevation = 4.dp,
-                    pressedElevation = 2.dp
-                ),
-                modifier = Modifier
-                    .shadow(
-                        elevation = 12.dp,
-                        shape = RoundedCornerShape(12.dp),
-                        spotColor = Color(0xFF42A5F5).copy(alpha = 0.35f),
-                        ambientColor = Color(0xFF42A5F5).copy(alpha = 0.25f)
-                    )
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF42A5F5),
-                                    Color(0xFF4DD0E1)
-                                )
-                            )
-                        )
-                        .padding(horizontal = 24.dp, vertical = 12.dp)
-                ) {
-                    Text(
-                        text = "Create Request",
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    )
-                }
+                Text(
+                    "Create Request",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }

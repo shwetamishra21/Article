@@ -11,7 +11,6 @@ import androidx.core.view.WindowCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.article.provider.ProviderRequestsScreen
 import com.example.article.ui.theme.ArticleTheme
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
@@ -39,8 +38,6 @@ fun ArticleApp() {
     var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
     var userRole by remember { mutableStateOf(UserRole.MEMBER) }
 
-    /* ---------- AUTH GATE ---------- */
-
     if (!isLoggedIn) {
         LoginScreen(
             onLoginSuccess = { roleString ->
@@ -57,24 +54,22 @@ fun ArticleApp() {
                 )
             }
         ) { innerPadding ->
-
             NavHost(
                 navController = navController,
                 startDestination = "home",
                 modifier = Modifier.padding(innerPadding)
             ) {
-
-                /* ---------- HOME ---------- */
+                // Home
                 composable("home") {
                     HomeScreen(navController = navController)
                 }
 
-                /* ---------- SEARCH ---------- */
+                // Search
                 composable("search") {
                     SearchScreen()
                 }
 
-                /* ---------- INBOX ---------- */
+                // Inbox
                 composable("inbox") {
                     InboxScreen(
                         navController = navController,
@@ -84,7 +79,7 @@ fun ArticleApp() {
                     )
                 }
 
-                /* ---------- PROFILE (with Create Post navigation) ---------- */
+                // Profile
                 composable("profile") {
                     ProfileScreen(
                         role = userRole,
@@ -94,7 +89,6 @@ fun ArticleApp() {
                             userRole = UserRole.MEMBER
                         },
                         onCreatePost = {
-                            // ✨ Navigate to new post screen from profile
                             if (userRole != UserRole.SERVICE_PROVIDER) {
                                 navController.navigate("new_post")
                             }
@@ -102,7 +96,7 @@ fun ArticleApp() {
                     )
                 }
 
-                /* ---------- MEMBER / ADMIN REQUESTS ---------- */
+                // Requests (Member/Admin)
                 composable("requests") {
                     if (userRole == UserRole.MEMBER || userRole == UserRole.ADMIN) {
                         RequestsScreen(
@@ -113,6 +107,7 @@ fun ArticleApp() {
                     }
                 }
 
+                // Request Form
                 composable("request_form") {
                     RequestFormScreen(
                         onCancel = { navController.popBackStack() },
@@ -120,14 +115,7 @@ fun ArticleApp() {
                     )
                 }
 
-                /* ---------- PROVIDER ONLY ---------- */
-                composable("provider_requests") {
-                    if (userRole == UserRole.SERVICE_PROVIDER) {
-                        ProviderRequestsScreen()
-                    }
-                }
-
-                /* ---------- NEW POST (from Profile or direct) ---------- */
+                // New Post
                 composable("new_post") {
                     if (userRole != UserRole.SERVICE_PROVIDER) {
                         NewPostScreen(
@@ -140,17 +128,16 @@ fun ArticleApp() {
                     }
                 }
 
-                /* ---------- COMMENTS ---------- */
+                // Comments
                 composable("comments/{postId}") { backStack ->
                     val postId = backStack.arguments?.getString("postId") ?: return@composable
-
                     CommentScreen(
                         postId = postId,
                         onBack = { navController.popBackStack() }
                     )
                 }
 
-                /* ---------- CHAT ---------- */
+                // Chat
                 composable("chat/{chatId}/{title}") { backStack ->
                     val chatId = backStack.arguments?.getString("chatId") ?: return@composable
                     val title = backStack.arguments?.getString("title") ?: "Chat"

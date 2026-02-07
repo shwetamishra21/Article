@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material3.*
@@ -16,9 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,6 +26,8 @@ import androidx.navigation.NavController
 import com.example.article.Repository.InboxViewModel
 import com.example.article.core.UiState
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,6 +36,8 @@ fun InboxScreen(
     onCreateRequest: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableStateOf(0) }
+    var showMemberDialog by remember { mutableStateOf(false) }
+
     val viewModel: InboxViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
 
@@ -46,33 +49,33 @@ fun InboxScreen(
 
     Scaffold(
         topBar = {
-            // ✨ PREMIUM BLUE GRADIENT TOP BAR
             TopAppBar(
                 title = {
                     Text(
                         text = "Inbox",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 18.sp,
-                        color = Color.White
+                        fontWeight = FontWeight.SemiBold
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                ),
-                modifier = Modifier
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFF42A5F5),
-                                Color(0xFF4DD0E1)
-                            )
-                        )
-                    )
-                    .shadow(
-                        elevation = 4.dp,
-                        spotColor = Color(0xFF42A5F5).copy(alpha = 0.3f)
-                    )
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
+        },
+        floatingActionButton = {
+            // ✨ FAB to start new conversation (Members tab only)
+            if (selectedTab == 1) {
+                FloatingActionButton(
+                    onClick = { showMemberDialog = true },
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "Start conversation",
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+            }
         }
     ) { padding ->
         Column(
@@ -82,8 +85,8 @@ fun InboxScreen(
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            Color(0xFF42A5F5).copy(alpha = 0.03f),
-                            Color(0xFFFAFAFA)
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.03f),
+                            MaterialTheme.colorScheme.background
                         )
                     )
                 )
@@ -94,7 +97,7 @@ fun InboxScreen(
                     .fillMaxWidth()
                     .padding(16.dp),
                 shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF42A5F5).copy(alpha = 0.08f),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
                 tonalElevation = 0.dp,
                 shadowElevation = 1.dp
             ) {
@@ -131,7 +134,7 @@ fun InboxScreen(
                         CircularProgressIndicator(
                             strokeWidth = 3.dp,
                             modifier = Modifier.size(40.dp),
-                            color = Color(0xFF42A5F5)
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -148,7 +151,8 @@ fun InboxScreen(
                     if (filteredChats.isEmpty()) {
                         EmptyInboxState(
                             isService = selectedTab == 0,
-                            onCreateRequest = onCreateRequest
+                            onCreateRequest = onCreateRequest,
+                            onStartMemberChat = { showMemberDialog = true }
                         )
                     } else {
                         InboxList(
@@ -177,7 +181,7 @@ fun InboxScreen(
                             Text(
                                 text = state.message,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFF666666)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -185,6 +189,35 @@ fun InboxScreen(
 
                 UiState.Idle -> Unit
             }
+        }
+
+        // ✨ DIALOG TO CREATE MEMBER CHAT
+        if (showMemberDialog) {
+            StartMemberChatDialog(
+                onDismiss = { showMemberDialog = false },
+                onStart = { memberName ->
+                    // Create chat and navigate
+                    val chatId = UUID.randomUUID().toString()
+                    val firestore = FirebaseFirestore.getInstance()
+
+                    try {
+                        firestore.collection("chats").document(chatId).set(
+                            mapOf(
+                                "id" to chatId,
+                                "title" to memberName,
+                                "type" to "member",
+                                "lastMessage" to "",
+                                "createdAt" to System.currentTimeMillis()
+                            )
+                        )
+
+                        showMemberDialog = false
+                        navController.navigate("chat/$chatId/$memberName")
+                    } catch (e: Exception) {
+                        // Handle error
+                    }
+                }
+            )
         }
     }
 }
@@ -236,7 +269,7 @@ private fun ConversationCard(
             pressedElevation = 4.dp
         ),
         colors = CardDefaults.cardColors(
-            containerColor = Color.White
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Row(
@@ -252,8 +285,8 @@ private fun ConversationCard(
                     .background(
                         Brush.linearGradient(
                             colors = listOf(
-                                Color(0xFF42A5F5).copy(alpha = 0.15f),
-                                Color(0xFF4DD0E1).copy(alpha = 0.15f)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f)
                             )
                         )
                     ),
@@ -261,7 +294,7 @@ private fun ConversationCard(
             ) {
                 Text(
                     text = chat.title.firstOrNull()?.uppercase() ?: "?",
-                    color = Color(0xFF42A5F5),
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
@@ -277,12 +310,12 @@ private fun ConversationCard(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp,
-                    color = Color(0xFF1a1a1a)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = chat.lastMessage,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF666666),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     fontSize = 13.sp
                 )
@@ -308,9 +341,9 @@ private fun InboxTab(
         ),
         shape = RoundedCornerShape(12.dp),
         color = if (selected) {
-            Color(0xFF42A5F5)
+            MaterialTheme.colorScheme.primary
         } else {
-            Color.White.copy(alpha = 0.01f)
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.01f)
         },
         tonalElevation = if (selected) 2.dp else 0.dp,
         shadowElevation = if (selected) 4.dp else 0.dp
@@ -320,8 +353,8 @@ private fun InboxTab(
                 Modifier.background(
                     Brush.linearGradient(
                         colors = listOf(
-                            Color(0xFF42A5F5),
-                            Color(0xFF4DD0E1)
+                            MaterialTheme.colorScheme.primary,
+                            MaterialTheme.colorScheme.secondary
                         )
                     )
                 )
@@ -338,9 +371,9 @@ private fun InboxTab(
                     imageVector = icon,
                     contentDescription = null,
                     tint = if (selected)
-                        Color.White
+                        MaterialTheme.colorScheme.onPrimary
                     else
-                        Color(0xFF666666),
+                        MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(Modifier.width(8.dp))
@@ -349,9 +382,9 @@ private fun InboxTab(
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                     color = if (selected)
-                        Color.White
+                        MaterialTheme.colorScheme.onPrimary
                     else
-                        Color(0xFF666666)
+                        MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -363,7 +396,8 @@ private fun InboxTab(
 @Composable
 private fun EmptyInboxState(
     isService: Boolean,
-    onCreateRequest: () -> Unit
+    onCreateRequest: () -> Unit,
+    onStartMemberChat: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -383,8 +417,8 @@ private fun EmptyInboxState(
                     .background(
                         Brush.radialGradient(
                             colors = listOf(
-                                Color(0xFF42A5F5).copy(alpha = 0.15f),
-                                Color(0xFF42A5F5).copy(alpha = 0.05f)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
                             )
                         )
                     ),
@@ -394,7 +428,7 @@ private fun EmptyInboxState(
                     imageVector = if (isService) Icons.Default.Build else Icons.Default.Group,
                     contentDescription = null,
                     modifier = Modifier.size(40.dp),
-                    tint = Color(0xFF42A5F5).copy(alpha = 0.6f)
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
                 )
             }
 
@@ -414,19 +448,81 @@ private fun EmptyInboxState(
                 else
                     "Start connecting with your neighbors!",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF666666),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 14.sp
             )
 
-            if (isService) {
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = onCreateRequest,
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Create Service Request", fontWeight = FontWeight.SemiBold)
-                }
+            Spacer(Modifier.height(8.dp))
+
+            Button(
+                onClick = if (isService) onCreateRequest else onStartMemberChat,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = if (isService) "Create Service Request" else "Start Conversation",
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
+}
+
+/* ---------- DIALOG TO START MEMBER CHAT ---------- */
+
+@Composable
+private fun StartMemberChatDialog(
+    onDismiss: () -> Unit,
+    onStart: (String) -> Unit
+) {
+    var memberName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Start Conversation",
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Enter the name of the member you want to chat with:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = memberName,
+                    onValueChange = { memberName = it },
+                    label = { Text("Member Name") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (memberName.isNotBlank()) {
+                        onStart(memberName.trim())
+                    }
+                },
+                enabled = memberName.isNotBlank(),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Start Chat", fontWeight = FontWeight.SemiBold)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Cancel")
+            }
+        },
+        shape = RoundedCornerShape(16.dp)
+    )
 }
