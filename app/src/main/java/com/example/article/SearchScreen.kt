@@ -384,6 +384,7 @@ private fun EmptySearchState(query: String) {
                 color = Color(0xFF1a1a1a)
             )
 
+
             Text(
                 text = "Try a different search or category",
                 fontSize = 12.sp,
