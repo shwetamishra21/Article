@@ -4,16 +4,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx. compose. ui. layout. ContentScale
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import coil. compose. rememberAsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
 import androidx.compose.runtime.*
-import androidx. compose. foundation. Image
+import androidx.compose.foundation.Image
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,12 +29,15 @@ import androidx.navigation.NavController
 import com.example.article.Repository.LikeRepository
 import com.example.article.core.UiState
 import com.example.article.feed.HomeViewModel
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     navController: NavController,
-    viewModel: HomeViewModel = viewModel()
+    viewModel: HomeViewModel = viewModel(),
+    userNeighborhood: String = "Your Neighborhood"
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var unreadNotifications by remember { mutableStateOf(3) }
@@ -50,12 +53,11 @@ fun HomeScreen(
                     Text(
                         text = "Article",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
+                        fontSize = 22.sp,
                         color = Color.White
                     )
                 },
                 navigationIcon = {
-                    // ✨ NOTIFICATIONS WITH BADGE
                     BadgedBox(
                         badge = {
                             if (unreadNotifications > 0) {
@@ -94,8 +96,8 @@ fun HomeScreen(
                         )
                     )
                     .shadow(
-                        elevation = 4.dp,
-                        spotColor = Color(0xFF42A5F5).copy(alpha = 0.3f)
+                        elevation = 6.dp,
+                        spotColor = Color(0xFF42A5F5).copy(alpha = 0.4f)
                     )
             )
         }
@@ -104,14 +106,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color(0xFF42A5F5).copy(alpha = 0.03f),
-                            Color(0xFFFAFAFA)
-                        )
-                    )
-                )
+                .background(Color(0xFFF5F5F5))
         ) {
             when (val state = uiState) {
                 UiState.Loading -> {
@@ -135,25 +130,47 @@ fun HomeScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Text(text = "⚠️", fontSize = 40.sp)
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            text = "Unable to load feed",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 15.sp
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = state.message,
-                            fontSize = 12.sp,
-                            color = Color(0xFF666666)
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Button(
-                            onClick = { viewModel.refreshFeed() },
-                            shape = RoundedCornerShape(12.dp)
+                        Surface(
+                            modifier = Modifier.padding(24.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color.White,
+                            shadowElevation = 4.dp
                         ) {
-                            Text("Retry", fontSize = 13.sp)
+                            Column(
+                                modifier = Modifier.padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Default.Warning,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(56.dp),
+                                    tint = Color(0xFFD32F2F)
+                                )
+                                Spacer(Modifier.height(16.dp))
+                                Text(
+                                    text = "Unable to load feed",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = state.message,
+                                    fontSize = 14.sp,
+                                    color = Color(0xFF666666)
+                                )
+                                Spacer(Modifier.height(20.dp))
+                                Button(
+                                    onClick = { viewModel.refreshFeed() },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF42A5F5)
+                                    )
+                                ) {
+                                    Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Retry", fontSize = 14.sp)
+                                }
+                            }
                         }
                     }
                 }
@@ -162,6 +179,7 @@ fun HomeScreen(
                     FeedList(
                         feed = state.data,
                         navController = navController,
+                        userNeighborhood = userNeighborhood,
                         onLoadMore = { viewModel.loadMore() },
                         onLike = { post ->
                             viewModel.toggleLikeOptimistic(post.id)
@@ -182,7 +200,6 @@ fun HomeScreen(
                         )
                     }
                 }
-
             }
         }
     }
@@ -192,6 +209,7 @@ fun HomeScreen(
 private fun FeedList(
     feed: List<FeedItem>,
     navController: NavController,
+    userNeighborhood: String,
     onLoadMore: () -> Unit,
     onLike: (FeedItem.Post) -> Unit,
     onDeletePost: (String) -> Unit,
@@ -199,11 +217,11 @@ private fun FeedList(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 80.dp),
+        contentPadding = PaddingValues(vertical = 12.dp, horizontal = 0.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item(key = "header") {
-            HomeHeader()
+            HomeHeader(userNeighborhood)
         }
 
         val announcements = feed.filterIsInstance<FeedItem.Announcement>()
@@ -216,25 +234,38 @@ private fun FeedList(
         val posts = feed.filterIsInstance<FeedItem.Post>()
         if (posts.isEmpty() && announcements.isEmpty()) {
             item(key = "empty") {
-                Box(
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(48.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(horizontal = 16.dp, vertical = 32.dp)
+                        .shadow(
+                            elevation = 4.dp,
+                            shape = RoundedCornerShape(20.dp),
+                            spotColor = Color(0xFF42A5F5).copy(alpha = 0.3f)
+                        ),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White
                 ) {
                     Column(
+                        modifier = Modifier.padding(48.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(text = "📝", fontSize = 36.sp)
-                        Text(
-                            "No posts yet",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
+                        Icon(
+                            Icons.Default.Article,
+                            contentDescription = null,
+                            modifier = Modifier.size(56.dp),
+                            tint = Color(0xFF999999).copy(alpha = 0.6f)
                         )
                         Text(
-                            "Be the first to share!",
-                            fontSize = 12.sp,
+                            "No posts yet",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = Color(0xFF1a1a1a)
+                        )
+                        Text(
+                            "Be the first to share with your community!",
+                            fontSize = 14.sp,
                             color = Color(0xFF666666)
                         )
                     }
@@ -253,13 +284,18 @@ private fun FeedList(
 }
 
 @Composable
-private fun HomeHeader() {
-    Card(
+private fun HomeHeader(userNeighborhood: String) {
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+            .padding(horizontal = 16.dp)
+            .shadow(
+                elevation = 4.dp,
+                shape = RoundedCornerShape(20.dp),
+                spotColor = Color(0xFF42A5F5).copy(alpha = 0.3f)
+            ),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White
     ) {
         Box(
             modifier = Modifier
@@ -272,26 +308,37 @@ private fun HomeHeader() {
                         )
                     )
                 )
-                .padding(20.dp)
+                .padding(24.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = "Good day 👋",
                     color = Color.White.copy(alpha = 0.95f),
-                    fontSize = 11.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Medium
                 )
-                Text(
-                    text = "Your Neighborhood",
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                        text = userNeighborhood,
+                        color = Color.White,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = "Stay updated with your community",
                     color = Color.White.copy(alpha = 0.9f),
-                    fontSize = 11.sp
+                    fontSize = 13.sp
                 )
             }
         }
@@ -306,91 +353,142 @@ private fun AnnouncementCard(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
 
-    Card(
+    Surface(
         modifier = Modifier
             .padding(horizontal = 16.dp)
-            .fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            .fillMaxWidth()
+            .shadow(
+                elevation = 6.dp,
+                shape = RoundedCornerShape(20.dp),
+                spotColor = Color(0xFF42A5F5).copy(alpha = 0.35f)
+            ),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.linearGradient(
+                    Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xFF42A5F5).copy(alpha = 0.20f), // ✨ INCREASED TINT
-                            Color(0xFF4DD0E1).copy(alpha = 0.14f)
+                            Color(0xFF42A5F5).copy(alpha = 0.08f),
+                            Color.White
                         )
                     )
                 )
-                .padding(16.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+            // Header with icon
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.size(44.dp),
+                    shape = CircleShape,
+                    color = Color(0xFF42A5F5).copy(alpha = 0.2f)
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = announcement.title,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp, // ✨ REDUCED FONT
-                            color = Color(0xFF1a1a1a),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { showMenu = true },
-                        modifier = Modifier.size(28.dp)
-                    ) {
+                    Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            Icons.Default.MoreVert,
-                            contentDescription = "More",
-                            modifier = Modifier.size(18.dp),
-                            tint = Color(0xFF666666)
-                        )
-                    }
-
-                    DropdownMenu(showMenu, { showMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Delete", fontSize = 13.sp) },
-                            onClick = {
-                                showMenu = false
-                                showDeleteDialog = true
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = null,
-                                    tint = Color(0xFFB71C1C),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
+                            Icons.Default.Campaign,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = Color(0xFF42A5F5)
                         )
                     }
                 }
 
-                Text(
-                    text = announcement.message,
-                    fontSize = 12.sp, // ✨ REDUCED FONT
-                    lineHeight = 17.sp,
-                    color = Color(0xFF666666)
-                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFF42A5F5).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = "ANNOUNCEMENT",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF42A5F5),
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                    Text(
+                        text = formatTimestamp(announcement.time),
+                        fontSize = 12.sp,
+                        color = Color(0xFF999999)
+                    )
+                }
+
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription = "More",
+                        modifier = Modifier.size(20.dp),
+                        tint = Color(0xFF666666)
+                    )
+                }
+
+                DropdownMenu(showMenu, { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Delete", fontSize = 14.sp, fontWeight = FontWeight.Medium) },
+                        onClick = {
+                            showMenu = false
+                            showDeleteDialog = true
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = null,
+                                tint = Color(0xFFD32F2F),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    )
+                }
             }
+
+            // Title
+            Text(
+                text = announcement.title,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF1a1a1a),
+                lineHeight = 26.sp
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            // Message
+            Text(
+                text = announcement.message,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                fontSize = 14.sp,
+                lineHeight = 22.sp,
+                color = Color(0xFF333333)
+            )
+
+            Spacer(Modifier.height(12.dp))
         }
     }
 
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete Announcement", fontSize = 16.sp) },
-            text = { Text("Are you sure?", fontSize = 13.sp) },
+            title = { Text("Delete Announcement", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to delete this announcement? This action cannot be undone.", fontSize = 14.sp) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -398,14 +496,15 @@ private fun AnnouncementCard(
                         onDelete(announcement.id)
                     }
                 ) {
-                    Text("Delete", color = Color(0xFFB71C1C), fontSize = 13.sp)
+                    Text("Delete", color = Color(0xFFD32F2F), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel", fontSize = 13.sp)
+                    Text("Cancel", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 }
-            }
+            },
+            shape = RoundedCornerShape(16.dp)
         )
     }
 }
@@ -420,76 +519,79 @@ private fun PostCard(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
 
-    Card(
+    Surface(
         modifier = Modifier
             .padding(horizontal = 16.dp)
-            .fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            .fillMaxWidth()
+            .shadow(
+                elevation = 6.dp,
+                shape = RoundedCornerShape(20.dp),
+                spotColor = Color(0xFF42A5F5).copy(alpha = 0.35f)
+            ),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.fillMaxWidth()
         ) {
+            // Header - Author Info
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.weight(1f)
+                // Avatar
+                Surface(
+                    modifier = Modifier.size(44.dp),
+                    shape = CircleShape,
+                    color = Color(0xFF42A5F5).copy(alpha = 0.15f)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(
-                                        Color(0xFF42A5F5).copy(alpha = 0.15f),
-                                        Color(0xFF4DD0E1).copy(alpha = 0.15f)
-                                    )
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = item.author.firstOrNull()?.uppercase() ?: "?",
                             color = Color(0xFF42A5F5),
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-                    }
-
-                    Column {
-                        Text(
-                            item.author,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp // ✨ REDUCED FONT
-                        )
-                        Text(
-                            "Just now",
-                            fontSize = 11.sp, // ✨ REDUCED FONT
-                            color = Color(0xFF666666)
+                            fontSize = 18.sp
                         )
                     }
                 }
 
+                // Author Name & Time
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = item.author,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1a1a1a)
+                    )
+                    Text(
+                        text = formatTimestamp(item.time),
+                        fontSize = 12.sp,
+                        color = Color(0xFF999999)
+                    )
+                }
+
+                // More Options
                 IconButton(
                     onClick = { showMenu = true },
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
                         Icons.Default.MoreVert,
                         contentDescription = "More",
-                        modifier = Modifier.size(18.dp),
-                        tint = Color(0xFF666666)
+                        tint = Color(0xFF666666),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
                 DropdownMenu(showMenu, { showMenu = false }) {
                     DropdownMenuItem(
-                        text = { Text("Delete", fontSize = 13.sp) },
+                        text = { Text("Delete", fontSize = 14.sp, fontWeight = FontWeight.Medium) },
                         onClick = {
                             showMenu = false
                             showDeleteDialog = true
@@ -498,86 +600,164 @@ private fun PostCard(
                             Icon(
                                 Icons.Default.Delete,
                                 contentDescription = null,
-                                tint = Color(0xFFB71C1C),
-                                modifier = Modifier.size(18.dp)
+                                tint = Color(0xFFD32F2F),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     )
                 }
             }
 
+            // Content Text
             Text(
                 text = item.content,
-                fontSize = 13.sp, // ✨ REDUCED FONT
-                lineHeight = 18.sp,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-                color = Color(0xFF1a1a1a)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                fontSize = 14.sp,
+                lineHeight = 22.sp,
+                color = Color(0xFF1a1a1a),
+                maxLines = 6,
+                overflow = TextOverflow.Ellipsis
             )
 
+            // Image (if present) - HIGH QUALITY DISPLAY
             if (!item.imageUrl.isNullOrBlank()) {
-                Spacer(Modifier.height(6.dp))
-
-                Image(
-                    painter = rememberAsyncImagePainter(item.imageUrl),
-                    contentDescription = "Post image",
+                Spacer(Modifier.height(12.dp))
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 240.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                    contentScale = ContentScale.Crop
-                )
+                        .padding(horizontal = 16.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    shadowElevation = 3.dp
+                ) {
+                    Image(
+                        painter = rememberAsyncImagePainter(
+                            model = item.imageUrl,
+                            error = rememberAsyncImagePainter(android.R.drawable.ic_menu_gallery)
+                        ),
+                        contentDescription = "Post image",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 200.dp, max = 400.dp)
+                            .clip(RoundedCornerShape(16.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                }
             }
 
+            Spacer(Modifier.height(12.dp))
 
+            // Divider
             HorizontalDivider(
-                thickness = 1.dp,
-                color = Color(0xFF42A5F5).copy(alpha = 0.15f)
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = Color(0xFF42A5F5).copy(alpha = 0.12f),
+                thickness = 1.dp
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(
+            // Action Buttons
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                // Like Button
+                Surface(
                     onClick = { onLike(item) },
-                    enabled = !item.likedByMe,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (item.likedByMe)
+                        Color(0xFF42A5F5).copy(alpha = 0.12f)
+                    else
+                        Color.Transparent
                 ) {
-                    Icon(
-                        if (item.likedByMe) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                        contentDescription = "Like",
-                        tint = if (item.likedByMe) Color(0xFF42A5F5) else Color(0xFF666666),
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (item.likedByMe) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            contentDescription = "Like",
+                            modifier = Modifier.size(20.dp),
+                            tint = if (item.likedByMe)
+                                Color(0xFF42A5F5)
+                            else
+                                Color(0xFF666666)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = if (item.likes > 0) item.likes.toString() else "Like",
+                            fontSize = 14.sp,
+                            fontWeight = if (item.likedByMe) FontWeight.Bold else FontWeight.Medium,
+                            color = if (item.likedByMe)
+                                Color(0xFF42A5F5)
+                            else
+                                Color(0xFF666666)
+                        )
+                    }
                 }
 
-                if (item.likes > 0) {
-                    Text(
-                        "${item.likes}",
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 12.sp,
-                        color = Color(0xFF666666)
-                    )
-                }
+                Spacer(Modifier.width(8.dp))
 
-                Spacer(Modifier.width(6.dp))
-
-                IconButton(
+                // Comment Button
+                Surface(
                     onClick = { navController.navigate("comments/${item.id}") },
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.Transparent
                 ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Comment,
-                        contentDescription = "Comment",
-                        tint = Color(0xFF666666),
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Comment,
+                            contentDescription = "Comment",
+                            modifier = Modifier.size(20.dp),
+                            tint = Color(0xFF666666)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = if (item.commentCount > 0) item.commentCount.toString() else "Comment",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF666666)
+                        )
+                    }
                 }
 
-                Text(
-                    "${item.commentCount}",
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 12.sp,
-                    color = Color(0xFF666666)
-                )
+                Spacer(Modifier.width(8.dp))
+
+                // Share Button
+                Surface(
+                    onClick = { /* Share functionality */ },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.Transparent
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Share,
+                            contentDescription = "Share",
+                            modifier = Modifier.size(20.dp),
+                            tint = Color(0xFF666666)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Share",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF666666)
+                        )
+                    }
+                }
             }
         }
     }
@@ -585,8 +765,8 @@ private fun PostCard(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete Post", fontSize = 16.sp) },
-            text = { Text("Are you sure?", fontSize = 13.sp) },
+            title = { Text("Delete Post", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to delete this post? This action cannot be undone.", fontSize = 14.sp) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -594,14 +774,31 @@ private fun PostCard(
                         onDelete(item.id)
                     }
                 ) {
-                    Text("Delete", color = Color(0xFFB71C1C), fontSize = 13.sp)
+                    Text("Delete", color = Color(0xFFD32F2F), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel", fontSize = 13.sp)
+                    Text("Cancel", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 }
-            }
+            },
+            shape = RoundedCornerShape(16.dp)
         )
+    }
+}
+
+private fun formatTimestamp(timestamp: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - timestamp
+
+    return when {
+        diff < 60_000 -> "Just now"
+        diff < 3600_000 -> "${diff / 60_000}m ago"
+        diff < 86400_000 -> "${diff / 3600_000}h ago"
+        diff < 604800_000 -> "${diff / 86400_000}d ago"
+        else -> {
+            val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
+            sdf.format(Date(timestamp))
+        }
     }
 }
