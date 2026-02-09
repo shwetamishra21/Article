@@ -4,9 +4,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import com.google.firebase.storage.FirebaseStorage
-import kotlinx.coroutines.tasks.await
-import kotlinx. coroutines. launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com. example. article. Repository. PostType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,21 +31,21 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.article.feed.HomeViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.util.UUID
-
-enum class PostType { POST, ANNOUNCEMENT }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewPostScreen(
     onPostUploaded: () -> Unit,
-    viewModel: HomeViewModel = viewModel()
+    feedViewModel: HomeViewModel = viewModel()
 ) {
     val auth = FirebaseAuth.getInstance()
-    val storage = FirebaseStorage.getInstance()
     val firestore = FirebaseFirestore.getInstance()
-    val scope = rememberCoroutineScope()   // ✅ ADD THIS LINE
-
+    val storage = FirebaseStorage.getInstance()
+    val scope = rememberCoroutineScope()
 
     var selectedType by remember { mutableStateOf(PostType.POST) }
     var content by remember { mutableStateOf("") }
@@ -55,6 +53,7 @@ fun NewPostScreen(
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var uploadProgress by remember { mutableStateOf(0f) }
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -117,7 +116,7 @@ fun NewPostScreen(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ✨ TYPE TOGGLE
+            // Type Toggle
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -145,7 +144,7 @@ fun NewPostScreen(
                 }
             }
 
-            // ✨ ANNOUNCEMENT TITLE
+            // Announcement Title
             if (selectedType == PostType.ANNOUNCEMENT) {
                 OutlinedTextField(
                     value = title,
@@ -162,7 +161,7 @@ fun NewPostScreen(
                 )
             }
 
-            // ✨ CONTENT
+            // Content
             OutlinedTextField(
                 value = content,
                 onValueChange = { content = it },
@@ -187,7 +186,7 @@ fun NewPostScreen(
                 )
             )
 
-            // ✨ IMAGE UPLOAD (POST ONLY)
+            // Image Upload (POST ONLY)
             if (selectedType == PostType.POST) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
@@ -232,6 +231,14 @@ fun NewPostScreen(
                                 )
                             }
                         }
+
+                        // Upload Progress
+                        if (loading && uploadProgress > 0f) {
+                            LinearProgressIndicator(
+                                progress = uploadProgress,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     } else {
                         // Upload Button
                         Surface(
@@ -270,7 +277,7 @@ fun NewPostScreen(
                 }
             }
 
-            // ✨ ERROR MESSAGE
+            // Error Message
             error?.let {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
@@ -300,7 +307,7 @@ fun NewPostScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // ✨ SUBMIT BUTTON
+            // Submit Button
             val isEnabled = !loading && content.isNotBlank() &&
                     (selectedType == PostType.POST || title.isNotBlank())
 
@@ -319,92 +326,89 @@ fun NewPostScreen(
 
                     loading = true
                     error = null
-
-                    val id = UUID.randomUUID().toString()
-                    val timestamp = System.currentTimeMillis()
-
-                    // Optimistic UI
-                    when (selectedType) {
-                        PostType.POST -> {
-                            viewModel.addOptimistic(
-                                FeedItem.Post(
-                                    id = id,
-                                    author = user.email ?: "You",
-                                    content = content,
-                                    time = timestamp,
-                                    likes = 0,
-                                    commentCount = 0,
-                                    likedByMe = false,
-                                    imageUrl = imageUri?.toString()
-                                )
-                            )
-                        }
-                        PostType.ANNOUNCEMENT -> {
-                            viewModel.addOptimistic(
-                                FeedItem.Announcement(
-                                    id = id,
-                                    title = title,
-                                    message = content,
-                                    time = timestamp
-                                )
-                            )
-                        }
-                    }
-
-                    // Firestore write
-                    val postData = hashMapOf(
-                        "type" to selectedType.name.lowercase(), // "post" | "announcement"
-                        "content" to content,
-                        "title" to if (selectedType == PostType.ANNOUNCEMENT) title else null,
-                        "authorId" to user.uid,
-                        "authorName" to (user.email ?: "User"),
-
-                        // 🔐 LIKE SYSTEM (MAP ONLY)
-                        "likes" to 0,
-                        "likedBy" to emptyMap<String, Boolean>(),
-
-                        // 💬 COMMENTS
-                        "commentCount" to 0,
-
-                        // 🖼 IMAGE (stub for now — upload comes later)
-                        "imageUrl" to null,
-
-                        // ⏱ TIME (server-agnostic, consistent)
-                        "createdAt" to com.google.firebase.Timestamp.now()
-                    )
-
+                    uploadProgress = 0f
 
                     scope.launch {
                         try {
+                            val postId = UUID.randomUUID().toString()
                             var imageUrl: String? = null
 
-                            // 🖼 Upload image if present
-                            if (imageUri != null) {
-                                val ref = storage.reference
-                                    .child("post_images/$id.jpg")
+                            // Upload image if present
+                            if (imageUri != null && selectedType == PostType.POST) {
+                                val storageRef = storage.reference
+                                    .child("post_images/${user.uid}/$postId.jpg")
 
-                                ref.putFile(imageUri!!).await()
-                                imageUrl = ref.downloadUrl.await().toString()
+                                // Upload with progress
+                                val uploadTask = storageRef.putFile(imageUri!!)
+
+                                uploadTask.addOnProgressListener { snapshot ->
+                                    uploadProgress = snapshot.bytesTransferred.toFloat() /
+                                            snapshot.totalByteCount.toFloat()
+                                }
+
+                                uploadTask.await()
+                                imageUrl = storageRef.downloadUrl.await().toString()
                             }
 
-                            // 🔁 Inject imageUrl into existing postData
-                            val finalPostData = postData.toMutableMap().apply {
-                                this["imageUrl"] = imageUrl
+                            // Create post document
+                            val postData = hashMapOf(
+                                "type" to if (selectedType == PostType.POST) "post" else "announcement",
+                                "content" to content,
+                                "authorId" to user.uid,
+                                "authorName" to (user.email ?: "User"),
+                                "likes" to 0,
+                                "likedBy" to emptyMap<String, Boolean>(),
+                                "commentCount" to 0,
+                                "createdAt" to com.google.firebase.Timestamp.now()
+                            )
+
+                            // Add type-specific fields
+                            if (selectedType == PostType.ANNOUNCEMENT) {
+                                postData["title"] = title
                             }
 
+                            if (imageUrl != null) {
+                                postData["imageUrl"] = imageUrl
+                            }
+
+                            // Save to Firestore
                             firestore.collection("posts")
-                                .document(id)
-                                .set(finalPostData)
+                                .document(postId)
+                                .set(postData)
+                                .await()
+
+                            // Add optimistic item to feed
+                            val newItem = if (selectedType == PostType.POST) {
+                                com.example.article.FeedItem.Post(
+                                    id = postId,
+                                    author = user.email ?: "You",
+                                    content = content,
+                                    time = System.currentTimeMillis(),
+                                    likes = 0,
+                                    commentCount = 0,
+                                    likedByMe = false,
+                                    imageUrl = imageUrl
+                                )
+                            } else {
+                                com.example.article.FeedItem.Announcement(
+                                    id = postId,
+                                    title = title,
+                                    message = content,
+                                    time = System.currentTimeMillis()
+                                )
+                            }
+
+                            feedViewModel.addOptimistic(newItem)
 
                             loading = false
                             onPostUploaded()
 
                         } catch (e: Exception) {
                             loading = false
+                            uploadProgress = 0f
                             error = e.localizedMessage ?: "Failed to post"
                         }
                     }
-
                 },
                 enabled = isEnabled,
                 modifier = Modifier
@@ -433,18 +437,31 @@ fun NewPostScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     if (loading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp,
-                            color = Color.White
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.White
+                            )
+                            Text(
+                                text = if (uploadProgress > 0f)
+                                    "Uploading ${(uploadProgress * 100).toInt()}%"
+                                else "Posting...",
+                                color = Color.White,
+                                fontSize = 14.sp
+                            )
+                        }
                     } else {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                if (selectedType == PostType.POST) Icons.Default.Send else Icons.Default.Campaign,
+                                if (selectedType == PostType.POST) Icons.Default.Send
+                                else Icons.Default.Campaign,
                                 contentDescription = null,
                                 modifier = Modifier.size(20.dp),
                                 tint = if (isEnabled) Color.White else Color(0xFF666666)
