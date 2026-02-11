@@ -1,10 +1,7 @@
-import java.util.Properties
-import java.io.FileInputStream
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.1.0"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.1.0" // match your Kotlin version
     id("com.google.gms.google-services")
 }
 
@@ -20,13 +17,6 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
-
-        // Load properties
-        val properties = Properties()
-        val localPropertiesFile = rootProject.file("local.properties")
-        if (localPropertiesFile.exists()) {
-            properties.load(FileInputStream(localPropertiesFile))
-        }
     }
 
     buildTypes {
@@ -48,10 +38,7 @@ android {
         jvmTarget = "17"
     }
 
-    buildFeatures {
-        compose = true
-        buildConfig = true
-    }
+    buildFeatures { compose = true }
 
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
@@ -62,7 +49,9 @@ android {
     }
 }
 
+
 dependencies {
+
     // Core
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
@@ -72,23 +61,22 @@ dependencies {
     implementation("androidx.compose.ui:ui:1.7.3")
     implementation("androidx.compose.material3:material3:1.3.0")
     implementation("androidx.compose.material:material:1.6.8")
+
+
     implementation("androidx.compose.material:material-icons-extended:1.7.3")
     implementation("androidx.navigation:navigation-compose:2.8.2")
 
     // Image
     implementation("io.coil-kt:coil-compose:2.6.0")
 
-    // Firebase
+    // Firebase (BOM = versions auto-managed)
     implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-storage")
 
-    // Cloudinary
-    implementation("com.cloudinary:cloudinary-android:2.5.0")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
-    // Coroutines
+    // REQUIRED for await()
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 
     // Debug
