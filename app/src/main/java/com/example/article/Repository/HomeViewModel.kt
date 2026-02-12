@@ -7,9 +7,11 @@ import com.example.article.Repository.FeedRepository
 import com.example.article.core.UiState
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
+import com.example.article.Repository.LikeRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import com. example. article. CommentRepository
 
 class HomeViewModel : ViewModel() {
 
@@ -90,18 +92,27 @@ class HomeViewModel : ViewModel() {
 
     fun toggleLikeOptimistic(postId: String) {
         val current = (_uiState.value as? UiState.Success)?.data ?: return
-
         val updated = current.map {
-            if (it is FeedItem.Post && it.id == postId && !it.likedByMe) {
+            if (it is FeedItem.Post && it.id == postId) {
                 it.copy(
-                    likes = it.likes + 1,
-                    likedByMe = true
+                    likes = if (it.likedByMe) it.likes - 1 else it.likes + 1,
+                    likedByMe = !it.likedByMe
                 )
             } else it
         }
-
         _uiState.value = UiState.Success(updated)
     }
+
+    fun toggleLike(postId: String, currentlyLiked: Boolean) {
+        toggleLikeOptimistic(postId)
+        LikeRepository.toggleLike(
+            postId = postId,
+            isCurrentlyLiked = currentlyLiked,
+            onSuccess = {},
+            onError = { toggleLikeOptimistic(postId) } // Rollback
+        )
+    }
+
 
     /* ---------- DELETE ---------- */
 
@@ -131,6 +142,32 @@ class HomeViewModel : ViewModel() {
         lastVisible = null
         loadFeed()
     }
+    /* ---------- COMMENTS (add these) ---------- */
+    fun addComment(postId: String, authorId: String, author: String, text: String) {
+        // Optimistic UI update
+        val current = (_uiState.value as? UiState.Success)?.data ?: return
+        val updated = current.map {
+            if (it is FeedItem.Post && it.id == postId) {
+                it.copy(commentCount = it.commentCount + 1)
+            } else it
+        }
+        _uiState.value = UiState.Success(updated)
+
+        CommentRepository.addComment(
+            postId, authorId, author, text,
+            onComplete = {},
+            onError = { msg ->
+                // Rollback on error
+                val rollback = current.map {
+                    if (it is FeedItem.Post && it.id == postId) {
+                        it.copy(commentCount = it.commentCount - 1)
+                    } else it
+                }
+                _uiState.value = UiState.Success(rollback)
+            }
+        )
+    }
+
 
     /* ---------- MAPPER ---------- */
 
@@ -159,6 +196,7 @@ class HomeViewModel : ViewModel() {
                 FeedItem.Post(
                     id = doc.id,
                     author = doc.getString("authorName") ?: "User",
+                    authorId = doc.getString("authorId") ?: "",
                     content = doc.getString("content") ?: "",
                     time = time,
                     likes = (doc.getLong("likes") ?: 0L).toInt(),

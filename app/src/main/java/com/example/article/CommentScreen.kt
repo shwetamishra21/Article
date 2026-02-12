@@ -4,17 +4,17 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx. compose. material. icons. automirrored. filled. ArrowBack
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun CommentScreen(
     postId: String,
+    postAuthorId: String,
     onBack: () -> Unit
 ) {
     val firestore = FirebaseFirestore.getInstance()
@@ -43,6 +44,15 @@ fun CommentScreen(
     var error by remember { mutableStateOf<String?>(null) }
 
     val listState = rememberLazyListState()
+    val currentUserId = auth.currentUser?.uid ?: ""
+
+    // Ensure we have a valid post before proceeding
+    LaunchedEffect(postId) {
+        if (postId.isBlank()) {
+            error = "Invalid post"
+            loading = false
+        }
+    }
 
     /* ---------- REALTIME LISTENER ---------- */
     DisposableEffect(postId) {
@@ -50,19 +60,28 @@ fun CommentScreen(
             firestore.collection("posts")
                 .document(postId)
                 .collection("comments")
-                .orderBy("createdAt")
-                .addSnapshotListener { snapshot, _ ->
+                .addSnapshotListener { snapshot, firebaseError ->
+                    if (firebaseError != null) {
+                        error = "Failed to load comments: ${firebaseError.localizedMessage}"
+                        loading = false
+                        return@addSnapshotListener
+                    }
+
                     if (snapshot != null) {
                         comments = snapshot.documents.mapNotNull { doc ->
-                            Comment(
-                                id = doc.id,
-                                postId = postId,
-                                authorId = doc.getString("authorId") ?: "",
-                                author = doc.getString("author") ?: "User",
-                                message = doc.getString("text") ?: "",
-                                createdAt = doc.getLong("createdAt") ?: 0L
-                            )
-                        }
+                            try {
+                                Comment(
+                                    id = doc.id,
+                                    postId = postId,
+                                    authorId = doc.getString("authorId") ?: "",
+                                    author = doc.getString("author") ?: "User",
+                                    message = doc.getString("text") ?: "",
+                                    createdAt = doc.getLong("createdAt") ?: 0L
+                                )
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }.sortedBy { it.createdAt }
                         optimisticComments = emptyList()
                         loading = false
                     }
@@ -91,7 +110,7 @@ fun CommentScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
-                            imageVector = Icons.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back"
                         )
                     }
@@ -161,15 +180,13 @@ fun CommentScreen(
                     ) { comment ->
                         CommentCard(
                             comment = comment,
-                            isAuthor = auth.currentUser?.uid == comment.authorId,
+                            currentUserId = currentUserId,
+                            postOwnerId = postAuthorId,
                             onDelete = {
-                                CommentRepository.deleteComment(
-                                    postId = postId,
-                                    commentId = comment.id,
-                                    onError = { error = it }
-                                )
+                                CommentRepository.deleteComment(postId, comment.id, onError = { error = it })
                             }
                         )
+
                     }
                 }
             }
@@ -237,9 +254,13 @@ fun CommentScreen(
                                 message = ""
 
                                 scope.launch {
-                                    listState.animateScrollToItem(
-                                        maxOf(allComments.size, 0)
-                                    )
+                                    try {
+                                        listState.animateScrollToItem(
+                                            index = allComments.size
+                                        )
+                                    } catch (e: Exception) {
+                                        // Ignore scroll errors
+                                    }
                                 }
 
                                 CommentRepository.addComment(
@@ -297,14 +318,17 @@ fun CommentScreen(
 @Composable
 private fun CommentCard(
     comment: Comment,
-    isAuthor: Boolean,
+    currentUserId: String,
+    postOwnerId: String,
     onDelete: () -> Unit
 ) {
+    val canDelete = currentUserId == comment.authorId || currentUserId == postOwnerId
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .then(
-                if (isAuthor) {
+                if (canDelete) {
                     Modifier.combinedClickable(
                         onClick = {},
                         onLongClick = onDelete
@@ -314,18 +338,13 @@ private fun CommentCard(
                 }
             ),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 1.dp
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Avatar
             Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -334,16 +353,14 @@ private fun CommentCard(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = comment.author.first().uppercase(),
+                    text = comment.author.firstOrNull()?.uppercase() ?: "?",
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
             }
-
-            // Content
             Column(
-                modifier = Modifier.weight(1f),
+                Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(
@@ -351,20 +368,17 @@ private fun CommentCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = comment.author,
+                        comment.author,
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        fontWeight = FontWeight.SemiBold
                     )
-                    if (isAuthor) {
+                    if (currentUserId == comment.authorId) {
                         Surface(
                             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                             shape = RoundedCornerShape(4.dp)
                         ) {
                             Text(
-                                text = "You",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                "You",
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Medium
@@ -373,17 +387,15 @@ private fun CommentCard(
                     }
                 }
                 Text(
-                    text = comment.message,
+                    comment.message,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
                     lineHeight = 20.sp
                 )
-
                 Text(
-                    text = "Just now",
+                    "Just now",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

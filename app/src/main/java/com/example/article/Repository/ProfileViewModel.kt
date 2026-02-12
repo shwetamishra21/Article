@@ -3,10 +3,10 @@ package com.example.article.Repository
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.article.CloudinaryHelper
 import com.example.article.FeedItem
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -16,7 +16,7 @@ data class UserProfile(
     val uid: String = "",
     val name: String = "",
     val bio: String = "",
-    val neighborhood: String = "",  // ADDED
+    val neighborhood: String = "",
     val photoUrl: String = "",
     val email: String = "",
     val role: String = "member"
@@ -35,7 +35,6 @@ class ProfileViewModel : ViewModel() {
 
     private val auth = FirebaseAuth.getInstance()
     private val firestore = FirebaseFirestore.getInstance()
-    private val storage = FirebaseStorage.getInstance()
 
     private val _uiState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
     val uiState: StateFlow<ProfileUiState> = _uiState
@@ -65,13 +64,13 @@ class ProfileViewModel : ViewModel() {
                     uid = userId,
                     name = profileDoc.getString("name") ?: "",
                     bio = profileDoc.getString("bio") ?: "",
-                    neighborhood = profileDoc.getString("neighborhood") ?: "",  // ADDED
+                    neighborhood = profileDoc.getString("neighborhood") ?: "",
                     photoUrl = profileDoc.getString("photoUrl") ?: "",
                     email = profileDoc.getString("email") ?: auth.currentUser?.email ?: "",
                     role = profileDoc.getString("role") ?: "member"
                 )
 
-                // ✅ NO INDEX REQUIRED - Query only by authorId, sort in memory
+                // Query only by authorId, sort in memory (no index required)
                 val postsSnapshot = firestore.collection("posts")
                     .whereEqualTo("authorId", userId)
                     .get()
@@ -93,6 +92,7 @@ class ProfileViewModel : ViewModel() {
                             FeedItem.Post(
                                 id = doc.id,
                                 author = doc.getString("authorName") ?: "",
+                                authorId = doc.getString("authorId") ?: userId,
                                 content = doc.getString("content") ?: "",
                                 time = timestamp,
                                 likes = (doc.getLong("likes") ?: 0L).toInt(),
@@ -100,12 +100,12 @@ class ProfileViewModel : ViewModel() {
                                 likedByMe = false,
                                 imageUrl = doc.getString("imageUrl")
                             )
-                        } catch (e: Exception) {
+                        } catch (_: Exception) {
                             null
                         }
                     }
-                    .sortedByDescending { it.time }  // Sort client-side by timestamp
-                    .take(20)  // Limit to 20 most recent posts
+                    .sortedByDescending { it.time }
+                    .take(20)
 
                 _uiState.value = ProfileUiState.Success(profile, posts)
 
@@ -129,14 +129,14 @@ class ProfileViewModel : ViewModel() {
                 .await()
 
             userDoc.getString("neighborhood")?.takeIf { it.isNotBlank() } ?: "Your Neighborhood"
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             "Your Neighborhood"
         }
     }
 
     /* ==================== UPDATE PROFILE ==================== */
 
-    fun updateProfile(name: String, bio: String, neighborhood: String, onComplete: () -> Unit) {  // ADDED neighborhood parameter
+    fun updateProfile(name: String, bio: String, neighborhood: String, onComplete: () -> Unit) {
         val userId = auth.currentUser?.uid ?: return
 
         viewModelScope.launch {
@@ -149,7 +149,7 @@ class ProfileViewModel : ViewModel() {
                         mapOf(
                             "name" to name,
                             "bio" to bio,
-                            "neighborhood" to neighborhood,  // ADDED
+                            "neighborhood" to neighborhood,
                             "updatedAt" to com.google.firebase.Timestamp.now()
                         )
                     )
@@ -162,7 +162,7 @@ class ProfileViewModel : ViewModel() {
                         profile = currentState.profile.copy(
                             name = name,
                             bio = bio,
-                            neighborhood = neighborhood  // ADDED
+                            neighborhood = neighborhood
                         )
                     )
                 }
@@ -179,7 +179,7 @@ class ProfileViewModel : ViewModel() {
         }
     }
 
-    /* ==================== UPLOAD PROFILE IMAGE ==================== */
+    /* ==================== UPLOAD PROFILE IMAGE (Using Cloudinary) ==================== */
 
     fun uploadProfileImage(uri: Uri, onComplete: () -> Unit) {
         val userId = auth.currentUser?.uid ?: return
@@ -188,12 +188,12 @@ class ProfileViewModel : ViewModel() {
             try {
                 _isUpdating.value = true
 
-                // Upload to Storage
-                val storageRef = storage.reference
-                    .child("profile_images/$userId/profile.jpg")
-
-                storageRef.putFile(uri).await()
-                val downloadUrl = storageRef.downloadUrl.await().toString()
+                // Upload to Cloudinary
+                val downloadUrl = CloudinaryHelper.uploadProfileImage(
+                    uri = uri,
+                    userId = userId,
+                    onProgress = { /* Optional: track progress */ }
+                )
 
                 // Update Firestore
                 firestore.collection("users")
@@ -239,7 +239,7 @@ class ProfileViewModel : ViewModel() {
                     )
                 }
 
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Silently fail or show toast
             }
         }

@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.runtime.collectAsState
 import coil.compose.rememberAsyncImagePainter
 import androidx.compose.runtime.*
 import androidx.compose.foundation.Image
@@ -26,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.article.Repository.LikeRepository
 import com.example.article.core.UiState
 import com.example.article.feed.HomeViewModel
 import java.text.SimpleDateFormat
@@ -40,7 +40,7 @@ fun HomeScreen(
     userNeighborhood: String = "Your Neighborhood"
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var unreadNotifications by remember { mutableStateOf(3) }
+    var unreadNotifications by remember { mutableIntStateOf(3) }
 
     LaunchedEffect(Unit) {
         viewModel.loadFeed()
@@ -175,15 +175,15 @@ fun HomeScreen(
                     }
                 }
 
-                is UiState.Success -> {
+                is UiState.Success<*> -> {
+                    @Suppress("UNCHECKED_CAST")
                     FeedList(
-                        feed = state.data,
+                        feed = state.data as List<FeedItem>,
                         navController = navController,
                         userNeighborhood = userNeighborhood,
                         onLoadMore = { viewModel.loadMore() },
                         onLike = { post ->
-                            viewModel.toggleLikeOptimistic(post.id)
-                            LikeRepository.toggleLike(post.id, post.likedByMe)
+                            viewModel.toggleLike(post.id, post.likedByMe)
                         },
                         onDeletePost = { viewModel.deletePost(it) },
                         onDeleteAnnouncement = { viewModel.deleteAnnouncement(it) }
@@ -703,7 +703,7 @@ private fun PostCard(
 
                 // Comment Button
                 Surface(
-                    onClick = { navController.navigate("comments/${item.id}") },
+                    onClick = { navController.navigate("comments/${item.id}/${item.authorId}") },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
                     color = Color.Transparent

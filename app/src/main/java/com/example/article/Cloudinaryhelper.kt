@@ -12,16 +12,21 @@ import kotlin.coroutines.resumeWithException
 object CloudinaryHelper {
 
     private var isInitialized = false
-    private const val CLOUD_NAME = "dpn1202gn"  // Hardcoded (safe for URL gen, public info)
+    private const val CLOUD_NAME = "dpn1202gn"
 
     fun initIfNeeded(context: Context) {
         if (!isInitialized) {
-            val config = mapOf(
-                "cloud_name" to CLOUD_NAME,
-                "secure" to true
-            )
-            MediaManager.init(context, config)
-            isInitialized = true
+            try {
+                val config = hashMapOf<String, Any>(
+                    "cloud_name" to CLOUD_NAME,
+                    "secure" to true
+                )
+                MediaManager.init(context, config)
+                isInitialized = true
+            } catch (e: Exception) {
+                // Already initialized, ignore
+                isInitialized = true
+            }
         }
     }
 
@@ -30,10 +35,25 @@ object CloudinaryHelper {
         userId: String,
         onProgress: (Float) -> Unit = {}
     ): String = suspendCancellableCoroutine { continuation ->
-        val requestId = MediaManager.get().upload(uri)
+        val uploadRequest = MediaManager.get().upload(uri)
             .option("folder", "posts/$userId")
             .option("resource_type", "image")
-            .unsigned("dpn1202gn_preset")  // Move to end, no transformations after
+            .option("quality", "auto:best")
+            .option("fetch_format", "auto")
+            .option("flags", "progressive")
+            .option("quality", "auto:good")
+            .option("width", 1024)
+            .option("crop", "limit")
+            .unsigned("dpn1202gn_preset")
+            .option(
+                "transformation",
+                listOf(
+                    mapOf(
+                        "quality" to "auto:best",
+                        "fetch_format" to "auto"
+                    )
+                )
+            )
             .callback(object : UploadCallback {
                 override fun onStart(requestId: String) {
                     onProgress(0.1f)
@@ -62,32 +82,29 @@ object CloudinaryHelper {
                     )
                 }
 
-                override fun onReschedule(requestId: String, error: ErrorInfo) { }
+                override fun onReschedule(requestId: String, error: ErrorInfo) {}
             })
-            .dispatch()
+
+        val requestId = uploadRequest.dispatch()
 
         continuation.invokeOnCancellation {
             MediaManager.get().cancelRequest(requestId)
         }
     }
 
-
     suspend fun uploadProfileImage(
         uri: Uri,
         userId: String,
         onProgress: (Float) -> Unit = {}
     ): String = suspendCancellableCoroutine { continuation ->
-        val requestId = MediaManager.get().upload(uri)
+        val uploadRequest = MediaManager.get().upload(uri)
             .option("folder", "profiles/$userId")
             .option("resource_type", "image")
             .option("public_id", "avatar_$userId")
             .option("overwrite", true)
             .option("quality", "auto:best")
             .option("fetch_format", "auto")
-            .option("quality", "auto:good")  // lighter than "auto:best"
-            .option("width", 1024)           // Resize before upload
-            .option("crop", "limit")
-            .unsigned("dpn1202gn_preset")  // Replace with your actual preset
+            .unsigned("dpn1202gn_preset")
             .option(
                 "transformation",
                 listOf(
@@ -129,9 +146,10 @@ object CloudinaryHelper {
                     )
                 }
 
-                override fun onReschedule(requestId: String, error: ErrorInfo) { }
+                override fun onReschedule(requestId: String, error: ErrorInfo) {}
             })
-            .dispatch()
+
+        val requestId = uploadRequest.dispatch()
 
         continuation.invokeOnCancellation {
             MediaManager.get().cancelRequest(requestId)

@@ -43,6 +43,7 @@ object FeedRepository {
                     FeedItem.Post(
                         id = doc.id,
                         author = doc.getString("authorName") ?: "Unknown",
+                        authorId = doc.getString("authorId") ?: "",
                         content = doc.getString("content") ?: "",
                         time = doc.getLong("createdAt") ?: 0L,
                         likes = (doc.getLong("likes") ?: 0L).toInt(),

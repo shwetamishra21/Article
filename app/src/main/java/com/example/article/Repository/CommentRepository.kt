@@ -32,11 +32,9 @@ object CommentRepository {
             )
 
             // 🔢 Atomic, crash-safe increment
-            batch.update(
-                postRef,
-                "commentCount",
-                FieldValue.increment(1)
-            )
+            batch.update(postRef, mapOf(
+                "commentCount" to FieldValue.increment(1)
+            ))
         }.addOnSuccessListener {
             onComplete()
         }.addOnFailureListener {
@@ -53,11 +51,9 @@ object CommentRepository {
 
         firestore.runBatch { batch ->
             batch.delete(commentRef)
-            batch.update(
-                postRef,
-                "commentCount",
-                FieldValue.increment(-1)
-            )
+            batch.update(postRef, mapOf(
+                "commentCount" to FieldValue.increment(-1)
+            ))
         }.addOnFailureListener {
             onError(it.localizedMessage ?: "Failed to delete comment")
         }

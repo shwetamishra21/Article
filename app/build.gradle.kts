@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose") version "2.1.0" // match your Kotlin version
+    id("org.jetbrains.kotlin.plugin.compose") version "2.1.0"
     id("com.google.gms.google-services")
 }
 
@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.article"
-        minSdk = 24
+        minSdk = 26  // Changed from 24 to 26 to fix regex API issue
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -38,7 +38,9 @@ android {
         jvmTarget = "17"
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+    }
 
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
@@ -49,36 +51,41 @@ android {
     }
 }
 
-
 dependencies {
-
-    // Core
+    // Core AndroidX
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
     implementation("androidx.activity:activity-compose:1.9.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
 
-    // Compose
-    implementation("androidx.compose.ui:ui:1.7.3")
-    implementation("androidx.compose.material3:material3:1.3.0")
-    implementation("androidx.compose.material:material:1.6.8")
+    // ViewModel & LiveData
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.6")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.6")
 
-
-    implementation("androidx.compose.material:material-icons-extended:1.7.3")
+    // Compose BOM for consistent versions
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.8.2")
 
-    // Image
+    // Image loading
     implementation("io.coil-kt:coil-compose:2.6.0")
 
-    // Firebase (BOM = versions auto-managed)
-    implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
-    implementation("com.google.firebase:firebase-auth")
-    implementation("com.google.firebase:firebase-firestore")
-    implementation("com.google.firebase:firebase-storage")
+    // Firebase BOM
+    implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-firestore-ktx")
+    implementation("com.google.firebase:firebase-storage-ktx")
 
+    // Cloudinary Android SDK - VERSION 2.x (stable and working)
+    implementation("com.cloudinary:cloudinary-android:2.3.1")
 
-    // REQUIRED for await()
+    // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    // Debug
+    // Compose debugging
     debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-tooling-preview")
 }

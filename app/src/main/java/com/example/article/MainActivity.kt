@@ -135,10 +135,12 @@ fun ArticleApp() {
                         )
                     }
                 }
-                composable("comments/{postId}") { backStack ->
+                composable("comments/{postId}/{postAuthorId}") { backStack ->
                     val postId = backStack.arguments?.getString("postId") ?: return@composable
+                    val postAuthorId = backStack.arguments?.getString("postAuthorId") ?: return@composable
                     CommentScreen(
                         postId = postId,
+                        postAuthorId = postAuthorId,
                         onBack = { navController.popBackStack() }
                     )
                 }
