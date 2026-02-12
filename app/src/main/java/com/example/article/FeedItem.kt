@@ -11,7 +11,8 @@ sealed class FeedItem {
         val likes: Int,
         val commentCount: Int,
         val likedByMe: Boolean,
-        val imageUrl: String?
+        val imageUrl: String?,
+        val authorPhotoUrl: String? = null
     ) : FeedItem()
 
 

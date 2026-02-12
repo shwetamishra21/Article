@@ -1,176 +1,111 @@
-package com.example.article
+package com.example.article.utils
 
 import android.content.Context
 import android.net.Uri
-import com.cloudinary.android.MediaManager
-import com.cloudinary.android.callback.ErrorInfo
-import com.cloudinary.android.callback.UploadCallback
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
+import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 
 object CloudinaryHelper {
 
-    private var isInitialized = false
+    private const val TAG = "CloudinaryHelper"
+
+    // 🔥 Replace with YOUR values
     private const val CLOUD_NAME = "dpn1202gn"
+    private const val UPLOAD_PRESET = "dpn1202gn_preset"
 
-    fun initIfNeeded(context: Context) {
-        if (!isInitialized) {
-            try {
-                val config = hashMapOf<String, Any>(
-                    "cloud_name" to CLOUD_NAME,
-                    "secure" to true
+    private const val UPLOAD_URL =
+        "https://api.cloudinary.com/v1_1/$CLOUD_NAME/image/upload"
+
+    private val client = OkHttpClient()
+
+    suspend fun uploadImage(
+        imageUri: Uri,
+        context: Context,
+        folder: String
+    ): Result<CloudinaryResult> = withContext(Dispatchers.IO) {
+        try {
+            val file = uriToFile(imageUri, context)
+                ?: return@withContext Result.failure(Exception("File conversion failed"))
+
+            val requestBody = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart(
+                    "file",
+                    file.name,
+                    file.asRequestBody("image/*".toMediaTypeOrNull())
                 )
-                MediaManager.init(context, config)
-                isInitialized = true
-            } catch (e: Exception) {
-                // Already initialized, ignore
-                isInitialized = true
+                .addFormDataPart("upload_preset", UPLOAD_PRESET)
+                .addFormDataPart("folder", folder)
+                .build()
+
+            val request = Request.Builder()
+                .url(UPLOAD_URL)
+                .post(requestBody)
+                .build()
+
+            val response = client.newCall(request).execute()
+
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(
+                    Exception("Upload failed: ${response.message}")
+                )
             }
+
+            val responseBody = response.body?.string()
+                ?: return@withContext Result.failure(Exception("Empty response"))
+
+            val json = JSONObject(responseBody)
+            val secureUrl = json.getString("secure_url")
+            val publicId = json.getString("public_id")
+
+            file.delete()
+
+            Result.success(CloudinaryResult(secureUrl, publicId))
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Upload error", e)
+            Result.failure(e)
         }
     }
 
-    suspend fun uploadPostImage(
-        uri: Uri,
-        userId: String,
-        onProgress: (Float) -> Unit = {}
-    ): String = suspendCancellableCoroutine { continuation ->
-        val uploadRequest = MediaManager.get().upload(uri)
-            .option("folder", "posts/$userId")
-            .option("resource_type", "image")
-            .option("quality", "auto:best")
-            .option("fetch_format", "auto")
-            .option("flags", "progressive")
-            .option("quality", "auto:good")
-            .option("width", 1024)
-            .option("crop", "limit")
-            .unsigned("dpn1202gn_preset")
-            .option(
-                "transformation",
-                listOf(
-                    mapOf(
-                        "quality" to "auto:best",
-                        "fetch_format" to "auto"
-                    )
-                )
+    fun isConfigured(): Boolean {
+        return CLOUD_NAME.isNotBlank() && UPLOAD_PRESET.isNotBlank()
+    }
+
+    private fun uriToFile(uri: Uri, context: Context): File? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri)
+                ?: return null
+
+            val tempFile = File.createTempFile(
+                "upload_${System.currentTimeMillis()}",
+                ".jpg",
+                context.cacheDir
             )
-            .callback(object : UploadCallback {
-                override fun onStart(requestId: String) {
-                    onProgress(0.1f)
-                }
 
-                override fun onProgress(requestId: String, bytes: Long, totalBytes: Long) {
-                    val progress = bytes.toFloat() / totalBytes.toFloat()
-                    onProgress(progress)
-                }
+            val outputStream = FileOutputStream(tempFile)
+            inputStream.copyTo(outputStream)
 
-                override fun onSuccess(requestId: String, resultData: Map<*, *>) {
-                    onProgress(1.0f)
-                    val secureUrl = resultData["secure_url"] as? String
-                    if (secureUrl != null) {
-                        continuation.resume(secureUrl)
-                    } else {
-                        continuation.resumeWithException(
-                            Exception("Failed to get image URL from upload result")
-                        )
-                    }
-                }
+            inputStream.close()
+            outputStream.close()
 
-                override fun onError(requestId: String, error: ErrorInfo) {
-                    continuation.resumeWithException(
-                        Exception("Upload failed: ${error.description}")
-                    )
-                }
-
-                override fun onReschedule(requestId: String, error: ErrorInfo) {}
-            })
-
-        val requestId = uploadRequest.dispatch()
-
-        continuation.invokeOnCancellation {
-            MediaManager.get().cancelRequest(requestId)
+            tempFile
+        } catch (e: Exception) {
+            null
         }
-    }
-
-    suspend fun uploadProfileImage(
-        uri: Uri,
-        userId: String,
-        onProgress: (Float) -> Unit = {}
-    ): String = suspendCancellableCoroutine { continuation ->
-        val uploadRequest = MediaManager.get().upload(uri)
-            .option("folder", "profiles/$userId")
-            .option("resource_type", "image")
-            .option("public_id", "avatar_$userId")
-            .option("overwrite", true)
-            .option("quality", "auto:best")
-            .option("fetch_format", "auto")
-            .unsigned("dpn1202gn_preset")
-            .option(
-                "transformation",
-                listOf(
-                    mapOf(
-                        "width" to 500,
-                        "height" to 500,
-                        "crop" to "fill",
-                        "gravity" to "face",
-                        "quality" to "auto:best",
-                        "fetch_format" to "auto"
-                    )
-                )
-            )
-            .callback(object : UploadCallback {
-                override fun onStart(requestId: String) {
-                    onProgress(0.1f)
-                }
-
-                override fun onProgress(requestId: String, bytes: Long, totalBytes: Long) {
-                    val progress = bytes.toFloat() / totalBytes.toFloat()
-                    onProgress(progress)
-                }
-
-                override fun onSuccess(requestId: String, resultData: Map<*, *>) {
-                    onProgress(1.0f)
-                    val secureUrl = resultData["secure_url"] as? String
-                    if (secureUrl != null) {
-                        continuation.resume(secureUrl)
-                    } else {
-                        continuation.resumeWithException(
-                            Exception("Failed to get image URL from upload result")
-                        )
-                    }
-                }
-
-                override fun onError(requestId: String, error: ErrorInfo) {
-                    continuation.resumeWithException(
-                        Exception("Upload failed: ${error.description}")
-                    )
-                }
-
-                override fun onReschedule(requestId: String, error: ErrorInfo) {}
-            })
-
-        val requestId = uploadRequest.dispatch()
-
-        continuation.invokeOnCancellation {
-            MediaManager.get().cancelRequest(requestId)
-        }
-    }
-
-    fun getOptimizedImageUrl(
-        publicId: String,
-        width: Int? = null,
-        height: Int? = null,
-        crop: String = "fill",
-        quality: String = "auto:best"
-    ): String {
-        val transformations = mutableListOf<String>()
-        width?.let { transformations.add("w_$it") }
-        height?.let { transformations.add("h_$it") }
-        transformations.add("c_$crop")
-        transformations.add("q_$quality")
-        transformations.add("f_auto")
-
-        val transformationString = transformations.joinToString(",")
-        return "https://res.cloudinary.com/$CLOUD_NAME/image/upload/$transformationString/$publicId"
     }
 }
+
+data class CloudinaryResult(
+    val secureUrl: String,
+    val publicId: String
+)

@@ -45,7 +45,7 @@ fun ProfileScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isUpdating by viewModel.isUpdating.collectAsState()
-
+    val context = androidx.compose.ui.platform.LocalContext.current
     var isEditing by remember { mutableStateOf(false) }
     var editName by remember { mutableStateOf("") }
     var editBio by remember { mutableStateOf("") }
@@ -58,7 +58,7 @@ fun ProfileScreen(
     ) { uri ->
         uri?.let {
             selectedImageUri = it
-            viewModel.uploadProfileImage(it) {
+            viewModel.uploadProfileImage(it,context) {
                 selectedImageUri = null
             }
         }

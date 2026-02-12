@@ -13,6 +13,7 @@ object FeedRepository {
     /* ---------- FETCH FEED (UNCHANGED) ---------- */
 
     suspend fun fetchFeed(): List<FeedItem> {
+
         val snapshot = db.collection("posts")
             .orderBy(
                 "createdAt",
@@ -22,16 +23,23 @@ object FeedRepository {
             .await()
 
         return snapshot.documents.mapNotNull { doc ->
-            when (doc.getString("type")) {
+
+            val type = doc.getString("type") ?: return@mapNotNull null
+
+            val createdAt = doc.getTimestamp("createdAt")
+            val time = createdAt?.toDate()?.time ?: 0L
+
+            when (type) {
 
                 "announcement" -> FeedItem.Announcement(
                     id = doc.id,
                     title = doc.getString("title") ?: return@mapNotNull null,
                     message = doc.getString("content") ?: "",
-                    time = doc.getLong("createdAt") ?: 0L
+                    time = time
                 )
 
                 "post" -> {
+
                     val currentUid = FirebaseAuth.getInstance().currentUser?.uid
 
                     val likedBy =
@@ -45,19 +53,20 @@ object FeedRepository {
                         author = doc.getString("authorName") ?: "Unknown",
                         authorId = doc.getString("authorId") ?: "",
                         content = doc.getString("content") ?: "",
-                        time = doc.getLong("createdAt") ?: 0L,
+                        time = time,
                         likes = (doc.getLong("likes") ?: 0L).toInt(),
                         commentCount = (doc.getLong("commentCount") ?: 0L).toInt(),
                         likedByMe = likedByMe,
-                        imageUrl = doc.getString("imageUrl")
+                        imageUrl = doc.getString("imageUrl"),
+                        authorPhotoUrl = doc.getString("authorPhotoUrl")
                     )
                 }
-
 
                 else -> null
             }
         }
     }
+
 
     /* ---------- DELETE POST ---------- */
 

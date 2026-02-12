@@ -26,6 +26,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.article.utils.CloudinaryHelper
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
 import com.example.article.feed.HomeViewModel
@@ -369,14 +370,20 @@ fun NewPostScreen(
 
                             // 🖼 Upload image using Cloudinary if present
                             if (imageUri != null) {
-                                imageUrl = CloudinaryHelper.uploadPostImage(
-                                    uri = imageUri!!,
-                                    userId = user.uid,
-                                    onProgress = { progress ->
-                                        // Optional: Update UI with upload progress
-                                    }
+
+                                val result = CloudinaryHelper.uploadImage(
+                                    imageUri = imageUri!!,
+                                    context = auth.app.applicationContext,
+                                    folder = "posts/${user.uid}"
                                 )
+
+                                if (result.isSuccess) {
+                                    imageUrl = result.getOrNull()?.secureUrl
+                                } else {
+                                    throw result.exceptionOrNull() ?: Exception("Image upload failed")
+                                }
                             }
+
 
                             // Update post data with image URL
                             val finalPostData = postData.toMutableMap().apply {

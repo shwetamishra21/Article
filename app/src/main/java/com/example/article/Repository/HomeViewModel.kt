@@ -46,12 +46,19 @@ class HomeViewModel : ViewModel() {
                     return@addSnapshotListener
                 }
 
-                if (snapshot == null) {
-                    _uiState.value = UiState.Error("No data")
+                if (snapshot == null || snapshot.isEmpty) {
+                    _uiState.value = UiState.Success(emptyList())
+                    lastVisible = null
                     return@addSnapshotListener
                 }
 
-                val items = snapshot.documents.mapNotNull { mapDoc(it) }
+                val items = snapshot.documents.mapNotNull { doc ->
+                    try {
+                        mapDoc(doc)
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
 
                 lastVisible = snapshot.documents.lastOrNull()
 
@@ -154,7 +161,11 @@ class HomeViewModel : ViewModel() {
         _uiState.value = UiState.Success(updated)
 
         CommentRepository.addComment(
-            postId, authorId, author, text,
+            postId = postId,
+            authorId = authorId,
+            authorName = author,
+            authorPhotoUrl = "", // if not available here
+            content = text,
             onComplete = {},
             onError = { msg ->
                 // Rollback on error
@@ -172,21 +183,18 @@ class HomeViewModel : ViewModel() {
     /* ---------- MAPPER ---------- */
 
     private fun mapDoc(doc: DocumentSnapshot): FeedItem? {
+
         val type = doc.getString("type") ?: return null
 
-        val time = when {
-            doc.get("createdAt") is com.google.firebase.Timestamp ->
-                (doc.get("createdAt") as com.google.firebase.Timestamp).toDate().time
+        val createdAt = doc.getTimestamp("createdAt")
+        val time = createdAt?.toDate()?.time ?: 0L
 
-            doc.get("createdAt") is Long ->
-                doc.getLong("createdAt") ?: 0L
-
-            else -> 0L
-        }
         val currentUid = auth.currentUser?.uid
 
         return when (type) {
+
             "post" -> {
+
                 val likedBy =
                     doc.get("likedBy") as? Map<*, *> ?: emptyMap<Any, Any>()
 
@@ -202,7 +210,8 @@ class HomeViewModel : ViewModel() {
                     likes = (doc.getLong("likes") ?: 0L).toInt(),
                     commentCount = (doc.getLong("commentCount") ?: 0L).toInt(),
                     likedByMe = likedByMe,
-                    imageUrl = doc.getString("imageUrl")
+                    imageUrl = doc.getString("imageUrl"),
+                    authorPhotoUrl = doc.getString("authorPhotoUrl") // NEW
                 )
             }
 
@@ -216,6 +225,7 @@ class HomeViewModel : ViewModel() {
             else -> null
         }
     }
+
 
     override fun onCleared() {
         listener?.remove()
