@@ -1,6 +1,7 @@
 package com.example.article
 
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -8,108 +9,133 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.tasks.await
 import android.util.Log
 
-/**
- * Singleton to manage user session and profile data across the app.
- *
- * This ensures:
- * - Profile is loaded once on app start
- * - Profile is accessible from any screen
- * - No redundant Firestore fetches when creating posts/comments
- */
 object UserSessionManager {
 
     private const val TAG = "UserSessionManager"
 
-    // StateFlow to hold current user profile
+    /* ---------------- CURRENT USER STATE ---------------- */
+
     private val _currentUser = MutableStateFlow<UserProfile?>(null)
     val currentUser: StateFlow<UserProfile?> = _currentUser.asStateFlow()
 
-    // Loading state
-    private val _isLoading = MutableStateFlow(false)
+    /* ---------------- LOADING STATE ---------------- */
+
+    // IMPORTANT: start as TRUE so app shows loader on launch
+    private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    /**
-     * Load user profile from Firestore
-     * Call this after Firebase Auth succeeds
-     */
-    suspend fun loadUserProfile(uid: String, firestore: FirebaseFirestore): Result<UserProfile> {
-        return try {
-            _isLoading.value = true
-            Log.d(TAG, "Loading profile for UID: $uid")
+    /* =====================================================
+       SAFE TIMESTAMP HELPER (Fixes RuntimeException crash)
+       ===================================================== */
 
-            val documentSnapshot = firestore.collection("users")
+    private fun DocumentSnapshot.getTimestampSafe(field: String): Timestamp {
+        return try {
+            getTimestamp(field) ?: Timestamp.now()
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Invalid $field field type, using now: ${e.message}")
+            Timestamp.now()
+        }
+    }
+
+    /* =====================================================
+       LOAD PROFILE (Updated with safe parsing)
+       ===================================================== */
+
+    suspend fun loadUserProfile(
+        uid: String,
+        firestore: FirebaseFirestore
+    ): Result<UserProfile> {
+
+        return try {
+            Log.d(TAG, "Loading profile for UID = $uid")
+            _isLoading.value = true
+
+            val doc = firestore.collection("users")
                 .document(uid)
                 .get()
                 .await()
 
-            if (documentSnapshot.exists()) {
-                val profile = UserProfile(
-                    uid = documentSnapshot.getString("uid") ?: uid,
-                    email = documentSnapshot.getString("email") ?: "",
-                    name = documentSnapshot.getString("name") ?: "",
-                    role = documentSnapshot.getString("role") ?: "member",
-                    neighbourhood = documentSnapshot.getString("neighbourhood") ?: "",
-                    bio = documentSnapshot.getString("bio") ?: "",
-                    photoUrl = documentSnapshot.getString("photoUrl") ?: "",
-                    photoPublicId = documentSnapshot.getString("photoPublicId") ?: "",
-                    createdAt = documentSnapshot.getTimestamp("createdAt") ?: Timestamp.now()
-                )
-
-                _currentUser.value = profile
+            if (!doc.exists()) {
+                Log.e(TAG, "Profile document missing for UID=$uid")
+                _currentUser.value = null
                 _isLoading.value = false
-
-                Log.d(TAG, "Profile loaded successfully: ${profile.name}")
-                Result.success(profile)
-            } else {
-                _isLoading.value = false
-                Log.e(TAG, "Profile document does not exist for UID: $uid")
-                Result.failure(Exception("Profile not found"))
+                return Result.failure(Exception("Profile not found"))
             }
 
-        } catch (e: Exception) {
+            val profile = UserProfile(
+                uid = doc.getString("uid") ?: uid,
+                email = doc.getString("email") ?: "",
+                name = doc.getString("name") ?: "",
+                role = doc.getString("role") ?: "member",
+                neighbourhood = doc.getString("neighbourhood") ?: "",
+                bio = doc.getString("bio") ?: "",
+                photoUrl = doc.getString("photoUrl") ?: "",
+                photoPublicId = doc.getString("photoPublicId") ?: "",
+                createdAt = doc.getTimestampSafe("createdAt")
+            )
+
+            _currentUser.value = profile
             _isLoading.value = false
-            Log.e(TAG, "Failed to load profile: ${e.message}", e)
+
+            Log.d(TAG, "Profile load SUCCESS → ${profile.email}")
+
+            Result.success(profile)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Profile load FAILED", e)
+            _currentUser.value = null
+            _isLoading.value = false
             Result.failure(e)
         }
     }
 
-    /**
-     * Refresh the current user profile
-     * Call this after profile updates
-     */
+    /* =====================================================
+       REFRESH PROFILE
+       ===================================================== */
+
     suspend fun refreshProfile(firestore: FirebaseFirestore) {
-        val currentUid = _currentUser.value?.uid ?: return
-        loadUserProfile(currentUid, firestore)
+        val uid = _currentUser.value?.uid ?: return
+        Log.d(TAG, "Refreshing profile for $uid")
+        loadUserProfile(uid, firestore)
     }
 
+    /* =====================================================
+       FORCE SESSION (NEW — FIXES LOGIN STUCK ISSUE)
+       ===================================================== */
+
     /**
-     * Clear session data on logout
+     * Call this immediately after successful login/signup
+     * when you already have profile data.
      */
+    fun setUser(profile: UserProfile) {
+        Log.d(TAG, "Session manually set for ${profile.email}")
+        _currentUser.value = profile
+        _isLoading.value = false
+    }
+
+    /* =====================================================
+       LOGOUT
+       ===================================================== */
+
     fun clearSession() {
-        Log.d(TAG, "Clearing user session")
+        Log.d(TAG, "Session cleared")
         _currentUser.value = null
         _isLoading.value = false
     }
 
-    /**
-     * Check if user is logged in and profile is loaded
-     */
-    fun isUserLoggedIn(): Boolean {
-        return _currentUser.value != null
-    }
+    /* =====================================================
+       HELPERS
+       ===================================================== */
 
-    /**
-     * Get current user UID (shorthand)
-     */
-    fun getCurrentUid(): String? {
-        return _currentUser.value?.uid
-    }
+    fun isUserLoggedIn(): Boolean = _currentUser.value != null
+
+    fun getCurrentUid(): String? = _currentUser.value?.uid
 }
 
-/**
- * Data class representing user profile
- * Maps directly to Firestore /users/{uid} document
- */
+/* =========================================================
+   DATA MODEL
+   ========================================================= */
+
 data class UserProfile(
     val uid: String,
     val email: String,

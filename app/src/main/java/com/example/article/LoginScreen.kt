@@ -4,6 +4,9 @@ import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -11,12 +14,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.article.UserSessionManager
 import com.example.article.ui.theme.*
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.google.firebase.auth.FirebaseAuthUserCollisionException
+import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -29,11 +37,14 @@ fun LoginScreen(
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSignUp by remember { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) }
 
-    val scope = rememberCoroutineScope()
+    val scope = remember { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main) }
+
 
     Box(
         modifier = Modifier
@@ -72,6 +83,33 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(48.dp))
 
+            // Name field (only for sign up)
+            if (isSignUp) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = {
+                        name = it
+                        errorMessage = null
+                    },
+                    label = { Text("Full Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = BlueOnPrimary,
+                        unfocusedBorderColor = BlueOnPrimary.copy(alpha = 0.5f),
+                        focusedTextColor = BlueOnPrimary,
+                        unfocusedTextColor = BlueOnPrimary,
+                        focusedLabelColor = BlueOnPrimary,
+                        unfocusedLabelColor = BlueOnPrimary.copy(alpha = 0.7f),
+                        cursorColor = BlueOnPrimary
+                    ),
+                    singleLine = true,
+                    enabled = !isLoading
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             // Email field
             OutlinedTextField(
                 value = email,
@@ -97,7 +135,7 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Password field
+            // Password field with visibility toggle
             OutlinedTextField(
                 value = password,
                 onValueChange = {
@@ -116,7 +154,16 @@ fun LoginScreen(
                     unfocusedLabelColor = BlueOnPrimary.copy(alpha = 0.7f),
                     cursorColor = BlueOnPrimary
                 ),
-                visualTransformation = PasswordVisualTransformation(),
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                            tint = BlueOnPrimary.copy(alpha = 0.7f)
+                        )
+                    }
+                },
                 singleLine = true,
                 enabled = !isLoading
             )
@@ -131,7 +178,8 @@ fun LoginScreen(
                         .padding(vertical = 8.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = ErrorLight.copy(alpha = 0.2f)
-                    )
+                    ),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
                         text = errorMessage!!,
@@ -148,8 +196,10 @@ fun LoginScreen(
             Button(
                 onClick = {
                     scope.launch {
-                        if (email.isBlank() || password.isBlank()) {
-                            errorMessage = "Please fill all fields"
+                        // Validation
+                        val validationError = validateInput(email, password, name, isSignUp)
+                        if (validationError != null) {
+                            errorMessage = validationError
                             return@launch
                         }
 
@@ -163,8 +213,15 @@ fun LoginScreen(
                                     firestore = firestore,
                                     email = email.trim(),
                                     password = password,
-                                    onSuccess = onLoginSuccess,
-                                    onError = { errorMessage = it }
+                                    name = name.trim(),
+                                    onSuccess = {
+                                        Log.d("LoginScreen", "SignUp success, navigating...")
+                                        onLoginSuccess()
+                                    },
+                                    onError = { error ->
+                                        Log.e("LoginScreen", "SignUp error: $error")
+                                        errorMessage = error
+                                    }
                                 )
                             } else {
                                 handleLogin(
@@ -172,13 +229,19 @@ fun LoginScreen(
                                     firestore = firestore,
                                     email = email.trim(),
                                     password = password,
-                                    onSuccess = onLoginSuccess,
-                                    onError = { errorMessage = it }
+                                    onSuccess = {
+                                        Log.d("LoginScreen", "Login success, navigating...")
+                                        onLoginSuccess()
+                                    },
+                                    onError = { error ->
+                                        Log.e("LoginScreen", "Login error: $error")
+                                        errorMessage = error
+                                    }
                                 )
                             }
                         } catch (e: Exception) {
-                            errorMessage = e.message ?: "An error occurred"
-                            Log.e("LoginScreen", "Login error", e)
+                            Log.e("LoginScreen", "Unexpected error", e)
+                            errorMessage = "An unexpected error occurred. Please try again."
                         } finally {
                             isLoading = false
                         }
@@ -197,7 +260,8 @@ fun LoginScreen(
                 if (isLoading) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(24.dp),
-                        color = BluePrimaryDark
+                        color = BluePrimaryDark,
+                        strokeWidth = 2.dp
                     )
                 } else {
                     Text(
@@ -215,16 +279,39 @@ fun LoginScreen(
                 onClick = {
                     isSignUp = !isSignUp
                     errorMessage = null
+                    // Clear fields when switching
+                    if (!isSignUp) {
+                        name = ""
+                    }
                 },
                 enabled = !isLoading
             ) {
                 Text(
-                    text = if (isSignUp) "Already have an account? Login" else "Don't have an account? Sign Up",
+                    text = if (isSignUp)
+                        "Already have an account? Login"
+                    else
+                        "Don't have an account? Sign Up",
                     color = BlueOnPrimary,
                     fontSize = 14.sp
                 )
             }
         }
+    }
+}
+
+// ========================================
+// VALIDATION
+// ========================================
+
+private fun validateInput(email: String, password: String, name: String, isSignUp: Boolean): String? {
+    return when {
+        email.isBlank() -> "Email is required"
+        password.isBlank() -> "Password is required"
+        isSignUp && name.isBlank() -> "Name is required"
+        !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches() -> "Invalid email format"
+        password.length < 6 -> "Password must be at least 6 characters"
+        isSignUp && name.length < 2 -> "Name must be at least 2 characters"
+        else -> null
     }
 }
 
@@ -245,38 +332,51 @@ private suspend fun handleLogin(
 
         // 1. Firebase Auth login
         val authResult = auth.signInWithEmailAndPassword(email, password).await()
-        val user = authResult.user ?: throw Exception("Login failed - no user returned")
+        val user = authResult.user
+
+        if (user == null) {
+            Log.e("LoginScreen", "Auth returned null user")
+            onError("Login failed. Please try again.")
+            return
+        }
 
         Log.d("LoginScreen", "Auth success, UID: ${user.uid}")
 
-        // 2. Check if profile exists
+        // 2. Check if profile exists in Firestore
         val profileDoc = firestore.collection("users").document(user.uid).get().await()
 
         Log.d("LoginScreen", "Profile exists: ${profileDoc.exists()}")
 
-        // 3. Create profile if doesn't exist
+        // 3. Create profile if it doesn't exist (edge case)
         if (!profileDoc.exists()) {
             Log.d("LoginScreen", "Creating missing profile...")
-            createUserProfile(user.uid, email, firestore)
+            createUserProfile(user.uid, email, "User", firestore)
         }
 
-        // 4. Load profile into UserSessionManager
+        // 4. ALWAYS load profile AFTER creation check
         Log.d("LoginScreen", "Loading profile into session...")
         val result = UserSessionManager.loadUserProfile(user.uid, firestore)
 
         if (result.isFailure) {
             Log.e("LoginScreen", "Failed to load profile", result.exceptionOrNull())
-            throw Exception("Failed to load profile: ${result.exceptionOrNull()?.message}")
+            onError("Failed to load user data. Please try again.")
+            return
         }
 
-        Log.d("LoginScreen", "Profile loaded successfully, calling onSuccess")
+        Log.d("LoginScreen", "Profile loaded successfully")
 
-        // 5. Success - trigger navigation
+        // 5. Trigger UI state update
         onSuccess()
 
+    } catch (e: FirebaseAuthInvalidUserException) {
+        Log.e("LoginScreen", "Invalid user", e)
+        onError("No account found with this email")
+    } catch (e: FirebaseAuthInvalidCredentialsException) {
+        Log.e("LoginScreen", "Invalid credentials", e)
+        onError("Incorrect password")
     } catch (e: Exception) {
         Log.e("LoginScreen", "Login failed", e)
-        onError(e.message ?: "Login failed")
+        onError(e.message ?: "Login failed. Please try again.")
     }
 }
 
@@ -285,66 +385,84 @@ private suspend fun handleSignUp(
     firestore: FirebaseFirestore,
     email: String,
     password: String,
+    name: String,
     onSuccess: () -> Unit,
     onError: (String) -> Unit
 ) {
     try {
         Log.d("LoginScreen", "Starting signup for: $email")
 
-        // Validate password
-        if (password.length < 6) {
-            onError("Password must be at least 6 characters")
-            return
-        }
-
         // 1. Create Firebase Auth account
         val authResult = auth.createUserWithEmailAndPassword(email, password).await()
-        val user = authResult.user ?: throw Exception("Sign up failed - no user returned")
+        val user = authResult.user
+
+        if (user == null) {
+            Log.e("LoginScreen", "Auth returned null user")
+            onError("Sign up failed. Please try again.")
+            return
+        }
 
         Log.d("LoginScreen", "Auth account created, UID: ${user.uid}")
 
         // 2. Create Firestore profile
         Log.d("LoginScreen", "Creating Firestore profile...")
-        createUserProfile(user.uid, email, firestore)
+        createUserProfile(user.uid, email, name, firestore)
 
-        // 3. Load profile into UserSessionManager
+        // 3. ALWAYS load profile AFTER creation
         Log.d("LoginScreen", "Loading profile into session...")
         val result = UserSessionManager.loadUserProfile(user.uid, firestore)
 
         if (result.isFailure) {
             Log.e("LoginScreen", "Failed to load profile", result.exceptionOrNull())
-            throw Exception("Failed to load profile: ${result.exceptionOrNull()?.message}")
+            try {
+                user.delete().await()
+                Log.d("LoginScreen", "Cleaned up auth account after profile creation failure")
+            } catch (deleteError: Exception) {
+                Log.e("LoginScreen", "Failed to cleanup account", deleteError)
+            }
+            onError("Failed to create user profile. Please try again.")
+            return
         }
 
-        Log.d("LoginScreen", "Profile loaded successfully, calling onSuccess")
+        Log.d("LoginScreen", "Profile loaded successfully")
 
-        // 4. Success - trigger navigation
+        // 4. Trigger UI state update
         onSuccess()
 
+    } catch (e: FirebaseAuthWeakPasswordException) {
+        Log.e("LoginScreen", "Weak password", e)
+        onError("Password is too weak. Use at least 6 characters.")
+    } catch (e: FirebaseAuthInvalidCredentialsException) {
+        Log.e("LoginScreen", "Invalid email", e)
+        onError("Invalid email format")
+    } catch (e: FirebaseAuthUserCollisionException) {
+        Log.e("LoginScreen", "User exists", e)
+        onError("An account with this email already exists")
     } catch (e: Exception) {
         Log.e("LoginScreen", "Signup failed", e)
-        // Cleanup: If account created but profile failed, delete account
         try {
             auth.currentUser?.delete()?.await()
         } catch (deleteError: Exception) {
             Log.e("LoginScreen", "Failed to cleanup account", deleteError)
         }
-        onError(e.message ?: "Sign up failed")
+        onError(e.message ?: "Sign up failed. Please try again.")
     }
 }
 
-private suspend fun createUserProfile(uid: String, email: String, firestore: FirebaseFirestore) {
+
+private suspend fun createUserProfile(
+    uid: String,
+    email: String,
+    name: String,
+    firestore: FirebaseFirestore
+) {
     try {
         Log.d("LoginScreen", "Creating profile for UID: $uid")
-
-        val defaultName = email.substringBefore("@").replaceFirstChar {
-            if (it.isLowerCase()) it.titlecase() else it.toString()
-        }
 
         val userProfile = hashMapOf(
             "uid" to uid,
             "email" to email,
-            "name" to defaultName,
+            "name" to name,
             "role" to "member",
             "neighbourhood" to "",
             "bio" to "",
@@ -362,6 +480,6 @@ private suspend fun createUserProfile(uid: String, email: String, firestore: Fir
 
     } catch (e: Exception) {
         Log.e("LoginScreen", "Failed to create profile", e)
-        throw Exception("Failed to create profile: ${e.message}")
+        throw Exception("Failed to create user profile: ${e.message}")
     }
 }
