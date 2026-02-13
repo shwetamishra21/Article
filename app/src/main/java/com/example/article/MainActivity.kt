@@ -4,26 +4,35 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.article.provider.ProviderBottomBar
+import com.example.article.provider.ProviderInboxScreen
+import com.example.article.provider.ProviderProfileScreen
+import com.example.article.provider.ProviderRequestsScreen
+import com.example.article.ChatScreen
 import com.example.article.ui.screens.LoginScreen
 import com.example.article.ui.theme.ArticleTheme
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,7 +43,6 @@ class MainActivity : ComponentActivity() {
         FirebaseApp.initializeApp(this)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        // Load profile if user is already logged in
         checkAndLoadProfile()
 
         setContent {
@@ -58,9 +66,12 @@ class MainActivity : ComponentActivity() {
                     val result = UserSessionManager.loadUserProfile(currentUser.uid, firestore)
 
                     if (result.isSuccess) {
-                        Log.d("MainActivity", "Profile loaded successfully in checkAndLoadProfile")
+                        Log.d("MainActivity", "Profile loaded successfully")
                     } else {
-                        Log.e("MainActivity", "Profile load failed: ${result.exceptionOrNull()?.message}")
+                        Log.e(
+                            "MainActivity",
+                            "Profile load failed: ${result.exceptionOrNull()?.message}"
+                        )
                         auth.signOut()
                         UserSessionManager.clearSession()
                     }
@@ -83,16 +94,13 @@ fun ArticleApp() {
     val auth = remember { FirebaseAuth.getInstance() }
     val firestore = remember { FirebaseFirestore.getInstance() }
 
-    // Observe session state
     val currentUser by UserSessionManager.currentUser.collectAsState()
     val isLoading by UserSessionManager.isLoading.collectAsState()
 
-    // Determine if user is logged in
     val isLoggedIn = currentUser != null
     val userRole = UserRole.from(currentUser?.role ?: "member")
     val userNeighborhood = currentUser?.neighbourhood ?: "Your Neighborhood"
 
-    // Log state changes
     LaunchedEffect(currentUser, isLoading, isLoggedIn) {
         Log.d("ArticleApp", "=== STATE UPDATE ===")
         Log.d("ArticleApp", "isLoading: $isLoading")
@@ -101,7 +109,6 @@ fun ArticleApp() {
         Log.d("ArticleApp", "userRole: $userRole")
     }
 
-    // Show loading while profile loads
     if (isLoading) {
         Log.d("ArticleApp", "Showing loading screen")
         Box(
@@ -113,122 +120,180 @@ fun ArticleApp() {
         return
     }
 
-    // Route based on login state
     if (!isLoggedIn) {
         Log.d("ArticleApp", "Showing LoginScreen (not logged in)")
-
         LoginScreen(
             auth = auth,
             firestore = firestore,
             onLoginSuccess = {
                 Log.d("ArticleApp", "onLoginSuccess callback triggered!")
-                // State update happens automatically through UserSessionManager
-                // This will trigger recomposition
             }
         )
     } else {
-        Log.d("ArticleApp", "Showing main app (logged in)")
+        when (userRole) {
+            UserRole.SERVICE_PROVIDER -> {
+                Log.d("ArticleApp", "Showing Service Provider UI")
+                ProviderApp(navController, auth)
+            }
 
-        Scaffold(
-            bottomBar = {
-                BottomBar(
-                    navController = navController,
-                    role = userRole
+            UserRole.MEMBER,
+            UserRole.ADMIN -> {
+                Log.d("ArticleApp", "Showing Member UI")
+                MemberApp(navController, userRole, userNeighborhood, auth)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProviderApp(
+    navController: NavHostController,
+    auth: FirebaseAuth
+) {
+    Scaffold(
+        bottomBar = {
+            ProviderBottomBar(navController = navController)
+        }
+    ) { innerPadding ->
+
+        NavHost(
+            navController = navController,
+            startDestination = "provider_home",
+            modifier = Modifier.padding(innerPadding)
+        ) {
+
+            composable("provider_home") {
+                ProviderRequestsScreen()
+            }
+
+            composable("provider_inbox") {
+                ProviderInboxScreen(navController = navController)
+            }
+
+            composable("provider_profile") {
+                ProviderProfileScreen(
+                    onLogout = {
+                        Log.d("ProviderApp", "Logout triggered")
+                        auth.signOut()
+                        UserSessionManager.clearSession()
+                    }
                 )
             }
-        ) { innerPadding ->
-            NavHost(
+
+            composable("chat/{chatId}/{title}") { backStack ->
+                val chatId = backStack.arguments?.getString("chatId") ?: return@composable
+                val title = backStack.arguments?.getString("title") ?: "Chat"
+
+                ChatScreen(
+                    navController = navController,
+                    chatId = chatId,
+                    title = title
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemberApp(
+    navController: NavHostController,
+    userRole: UserRole,
+    userNeighborhood: String,
+    auth: FirebaseAuth
+) {
+    Scaffold(
+        bottomBar = {
+            BottomBar(
                 navController = navController,
-                startDestination = "home",
-                modifier = Modifier.padding(innerPadding)
-            ) {
-                composable("home") {
-                    Log.d("ArticleApp", "Rendering HomeScreen")
-                    HomeScreen(
-                        navController = navController,
-                        userNeighborhood = userNeighborhood
-                    )
-                }
+                role = userRole
+            )
+        }
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = "home",
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            composable("home") {
+                HomeScreen(
+                    navController = navController,
+                    userNeighborhood = userNeighborhood
+                )
+            }
 
-                composable("search") {
-                    SearchScreen()
-                }
+            composable("search") {
+                SearchScreen()
+            }
 
-                composable("inbox") {
-                    InboxScreen(
-                        navController = navController,
-                        onCreateRequest = {
-                            navController.navigate("request_form")
-                        }
-                    )
-                }
-
-                composable("profile") {
-                    ProfileScreen(
-                        role = userRole,
-                        onLogout = {
-                            Log.d("ArticleApp", "Logout triggered")
-                            auth.signOut()
-                            UserSessionManager.clearSession()
-                        },
-                        onCreatePost = {
-                            if (userRole != UserRole.SERVICE_PROVIDER) {
-                                navController.navigate("new_post")
-                            }
-                        }
-                    )
-                }
-
-                composable("requests") {
-                    if (userRole == UserRole.MEMBER || userRole == UserRole.ADMIN) {
-                        RequestsScreen(
-                            onCreateNew = {
-                                navController.navigate("request_form")
-                            }
-                        )
+            composable("inbox") {
+                InboxScreen(
+                    navController = navController,
+                    onCreateRequest = {
+                        navController.navigate("request_form")
                     }
-                }
+                )
+            }
 
-                composable("request_form") {
-                    RequestFormScreen(
-                        onCancel = { navController.popBackStack() },
-                        onSubmit = { navController.popBackStack() }
-                    )
-                }
-
-                composable("new_post") {
-                    if (userRole != UserRole.SERVICE_PROVIDER) {
-                        NewPostScreen(
-                            onPostUploaded = {
-                                navController.navigate("home") {
-                                    popUpTo("home") { inclusive = true }
-                                }
-                            }
-                        )
+            composable("profile") {
+                ProfileScreen(
+                    role = userRole,
+                    onLogout = {
+                        Log.d("MemberApp", "Logout triggered")
+                        auth.signOut()
+                        UserSessionManager.clearSession()
+                    },
+                    onCreatePost = {
+                        navController.navigate("new_post")
                     }
-                }
+                )
+            }
 
-                composable("comments/{postId}/{postAuthorId}") { backStack ->
-                    val postId = backStack.arguments?.getString("postId") ?: return@composable
-                    val postAuthorId = backStack.arguments?.getString("postAuthorId") ?: return@composable
+            composable("requests") {
+                RequestsScreen(
+                    onCreateNew = {
+                        navController.navigate("request_form")
+                    }
+                )
+            }
 
-                    CommentScreen(
-                        postId = postId,
-                        postAuthorId = postAuthorId,
-                        onBack = { navController.popBackStack() }
-                    )
-                }
+            composable("request_form") {
+                RequestFormScreen(
+                    onCancel = { navController.popBackStack() },
+                    onSubmit = { navController.popBackStack() }
+                )
+            }
 
-                composable("chat/{chatId}/{title}") { backStack ->
-                    val chatId = backStack.arguments?.getString("chatId") ?: return@composable
-                    val title = backStack.arguments?.getString("title") ?: "Chat"
+            composable("new_post") {
+                NewPostScreen(
+                    onPostUploaded = {
+                        navController.navigate("home") {
+                            popUpTo("home") { inclusive = true }
+                        }
+                    }
+                )
+            }
 
-                    ChatScreen(
-                        navController = navController,
-                        chatId = chatId,
-                        title = title
-                    )
-                }
+            composable("comments/{postId}/{postAuthorId}") { backStack ->
+                val postId = backStack.arguments?.getString("postId") ?: return@composable
+                val postAuthorId =
+                    backStack.arguments?.getString("postAuthorId") ?: return@composable
+
+                CommentScreen(
+                    postId = postId,
+                    postAuthorId = postAuthorId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("chat/{chatId}/{title}") { backStack ->
+                val chatId = backStack.arguments?.getString("chatId") ?: return@composable
+                val title = backStack.arguments?.getString("title") ?: "Chat"
+
+                ChatScreen(
+                    navController = navController,
+                    chatId = chatId,
+                    title = title
+                )
             }
         }
     }

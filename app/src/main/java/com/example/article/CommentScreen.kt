@@ -17,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -26,6 +27,18 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.launch
+import android.util.Log
+import com.google.firebase.firestore.DocumentSnapshot
+
+// Safe Timestamp helper
+private fun DocumentSnapshot.getTimestampSafe(field: String): Timestamp {
+    return try {
+        getTimestamp(field) ?: Timestamp.now()
+    } catch (e: RuntimeException) {
+        Log.w("CommentScreen", "Invalid $field, using now")
+        Timestamp.now()
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -60,6 +73,7 @@ fun CommentScreen(
             firestore.collection("posts")
                 .document(postId)
                 .collection("comments")
+                .orderBy("createdAt")
                 .addSnapshotListener { snapshot, firebaseError ->
 
                     if (firebaseError != null) {
@@ -78,14 +92,13 @@ fun CommentScreen(
                                     authorName = doc.getString("authorName") ?: "User",
                                     authorPhotoUrl = doc.getString("authorPhotoUrl") ?: "",
                                     content = doc.getString("content") ?: "",
-                                    createdAt = doc.getTimestamp("createdAt")
-                                        ?: Timestamp.now()
+                                    createdAt = doc.getTimestampSafe("createdAt")
                                 )
                             } catch (e: Exception) {
+                                Log.e("CommentScreen", "Failed to parse comment ${doc.id}", e)
                                 null
                             }
-                        }.sortedBy { it.createdAt.seconds }
-
+                        }
                         optimisticComments = emptyList()
                         loading = false
                     }
@@ -165,7 +178,6 @@ fun CommentScreen(
 
             Surface(tonalElevation = 3.dp) {
                 Column {
-
                     HorizontalDivider()
 
                     Row(
@@ -174,7 +186,6 @@ fun CommentScreen(
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-
                         OutlinedTextField(
                             value = message,
                             onValueChange = { message = it },
@@ -251,18 +262,17 @@ private fun CommentCard(
     postOwnerId: String,
     onDelete: () -> Unit
 ) {
+    val isDeleting = false  // Temp until repo fixed
     val canDelete = currentUserId == comment.authorId || currentUserId == postOwnerId
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .then(
-                if (canDelete) {
-                    Modifier.combinedClickable(
-                        onClick = {},
-                        onLongClick = onDelete
-                    )
-                } else Modifier
+            .alpha(if (isDeleting) 0.5f else 1f)
+            .combinedClickable(
+                enabled = canDelete,
+                onClick = {},
+                onLongClick = onDelete
             ),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -284,14 +294,8 @@ private fun CommentCard(
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(Modifier.weight(1f)) {
-
-                Text(
-                    comment.authorName,
-                    fontWeight = FontWeight.SemiBold
-                )
-
+                Text(comment.authorName, fontWeight = FontWeight.SemiBold)
                 Text(comment.content)
-
                 Text(
                     "Just now",
                     fontSize = 12.sp,

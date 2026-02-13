@@ -51,20 +51,20 @@ object CommentRepository {
     fun deleteComment(
         postId: String,
         commentId: String,
+        onSuccess: () -> Unit = {},  // ADD
         onError: (String) -> Unit = {}
     ) {
-
         val postRef = firestore.collection("posts").document(postId)
         val commentRef = postRef.collection("comments").document(commentId)
 
         firestore.runBatch { batch ->
             batch.delete(commentRef)
-            batch.update(
-                postRef,
-                mapOf("commentCount" to FieldValue.increment(-1))
-            )
+            batch.update(postRef, mapOf("commentCount" to FieldValue.increment(-1)))
+        }.addOnSuccessListener {
+            onSuccess()  // ADD
         }.addOnFailureListener {
             onError(it.localizedMessage ?: "Failed to delete comment")
         }
     }
+
 }
