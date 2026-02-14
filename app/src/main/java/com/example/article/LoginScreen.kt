@@ -29,6 +29,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     auth: FirebaseAuth,
@@ -38,13 +39,20 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
+    var selectedRole by remember { mutableStateOf("member") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSignUp by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
+    var showRoleMenu by remember { mutableStateOf(false) }
 
     val scope = remember { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main) }
 
+    val roleOptions = listOf(
+        "member" to "Member",
+        "admin" to "Admin",
+        "service_provider" to "Service Provider"
+    )
 
     Box(
         modifier = Modifier
@@ -106,6 +114,51 @@ fun LoginScreen(
                     singleLine = true,
                     enabled = !isLoading
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Role Selection Dropdown (only for sign up)
+                ExposedDropdownMenuBox(
+                    expanded = showRoleMenu,
+                    onExpandedChange = { showRoleMenu = !showRoleMenu && !isLoading }
+                ) {
+                    OutlinedTextField(
+                        value = roleOptions.find { it.first == selectedRole }?.second ?: "Member",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Role") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showRoleMenu) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BlueOnPrimary,
+                            unfocusedBorderColor = BlueOnPrimary.copy(alpha = 0.5f),
+                            focusedTextColor = BlueOnPrimary,
+                            unfocusedTextColor = BlueOnPrimary,
+                            focusedLabelColor = BlueOnPrimary,
+                            unfocusedLabelColor = BlueOnPrimary.copy(alpha = 0.7f)
+                        ),
+                        enabled = !isLoading
+                    )
+
+                    ExposedDropdownMenu(
+                        expanded = showRoleMenu,
+                        onDismissRequest = { showRoleMenu = false },
+                        modifier = Modifier.background(SurfaceLight)
+                    ) {
+                        roleOptions.forEach { (value, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label, color = OnSurfaceLight) },
+                                onClick = {
+                                    selectedRole = value
+                                    showRoleMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -214,6 +267,7 @@ fun LoginScreen(
                                     email = email.trim(),
                                     password = password,
                                     name = name.trim(),
+                                    role = selectedRole,
                                     onSuccess = {
                                         Log.d("LoginScreen", "SignUp success, navigating...")
                                         onLoginSuccess()
@@ -279,6 +333,8 @@ fun LoginScreen(
                 onClick = {
                     isSignUp = !isSignUp
                     errorMessage = null
+                    // Reset role to member when switching
+                    selectedRole = "member"
                     // Clear fields when switching
                     if (!isSignUp) {
                         name = ""
@@ -350,7 +406,7 @@ private suspend fun handleLogin(
         // 3. Create profile if it doesn't exist (edge case)
         if (!profileDoc.exists()) {
             Log.d("LoginScreen", "Creating missing profile...")
-            createUserProfile(user.uid, email, "User", firestore)
+            createUserProfile(user.uid, email, "User", "member", firestore)
         }
 
         // 4. ALWAYS load profile AFTER creation check
@@ -386,11 +442,12 @@ private suspend fun handleSignUp(
     email: String,
     password: String,
     name: String,
+    role: String,
     onSuccess: () -> Unit,
     onError: (String) -> Unit
 ) {
     try {
-        Log.d("LoginScreen", "Starting signup for: $email")
+        Log.d("LoginScreen", "Starting signup for: $email with role: $role")
 
         // 1. Create Firebase Auth account
         val authResult = auth.createUserWithEmailAndPassword(email, password).await()
@@ -404,9 +461,9 @@ private suspend fun handleSignUp(
 
         Log.d("LoginScreen", "Auth account created, UID: ${user.uid}")
 
-        // 2. Create Firestore profile
-        Log.d("LoginScreen", "Creating Firestore profile...")
-        createUserProfile(user.uid, email, name, firestore)
+        // 2. Create Firestore profile with selected role
+        Log.d("LoginScreen", "Creating Firestore profile with role: $role")
+        createUserProfile(user.uid, email, name, role, firestore)
 
         // 3. ALWAYS load profile AFTER creation
         Log.d("LoginScreen", "Loading profile into session...")
@@ -449,21 +506,21 @@ private suspend fun handleSignUp(
     }
 }
 
-
 private suspend fun createUserProfile(
     uid: String,
     email: String,
     name: String,
+    role: String,
     firestore: FirebaseFirestore
 ) {
     try {
-        Log.d("LoginScreen", "Creating profile for UID: $uid")
+        Log.d("LoginScreen", "Creating profile for UID: $uid with role: $role")
 
         val userProfile = hashMapOf(
             "uid" to uid,
             "email" to email,
             "name" to name,
-            "role" to "member",
+            "role" to role,
             "neighbourhood" to "",
             "bio" to "",
             "photoUrl" to "",
@@ -476,7 +533,7 @@ private suspend fun createUserProfile(
             .set(userProfile)
             .await()
 
-        Log.d("LoginScreen", "Profile created successfully")
+        Log.d("LoginScreen", "Profile created successfully with role: $role")
 
     } catch (e: Exception) {
         Log.e("LoginScreen", "Failed to create profile", e)

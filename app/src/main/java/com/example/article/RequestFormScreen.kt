@@ -12,14 +12,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
+import androidx.compose. foundation. clickable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.article.Repository.MemberRequestViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -27,16 +27,21 @@ import java.util.*
 @Composable
 fun RequestFormScreen(
     onCancel: () -> Unit,
-    onSubmit: () -> Unit
+    onSubmit: () -> Unit,
+    viewModel: MemberRequestViewModel = viewModel()
 ) {
     var serviceType by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf("") }
-    var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var selectedDate by remember { mutableStateOf<Date?>(null) }
+    var showDatePicker by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
 
+    val loading by viewModel.loading.collectAsState()
+    val error by viewModel.error.collectAsState()
+    val currentUser by UserSessionManager.currentUser.collectAsState()
+
+    // Expanded list of service types
     val serviceTypes = listOf(
         "Plumber",
         "Electrician",
@@ -45,11 +50,27 @@ fun RequestFormScreen(
         "Painter",
         "Gardener",
         "AC Repair",
+        "Appliance Repair",
+        "Pest Control",
+        "Locksmith",
+        "Handyman",
+        "Mason",
+        "Welder",
+        "Tailor",
+        "Beautician",
+        "Tutor",
+        "Chef/Cook",
+        "Driver",
+        "Security Guard",
+        "Moving & Packing",
+        "Interior Designer",
+        "Solar Panel Installer",
+        "Water Tank Cleaner",
+        "Car Wash",
         "Other"
     )
 
-    val auth = FirebaseAuth.getInstance()
-    val firestore = FirebaseFirestore.getInstance()
+    val dateState = rememberDatePickerState()
 
     Scaffold(
         topBar = {
@@ -97,7 +118,8 @@ fun RequestFormScreen(
                     value = serviceType,
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Service Type", fontSize = 13.sp) },
+                    label = { Text("Service Type *", fontSize = 13.sp) },
+                    placeholder = { Text("Select a service", fontSize = 13.sp) },
                     trailingIcon = {
                         ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
                     },
@@ -113,7 +135,8 @@ fun RequestFormScreen(
 
                 ExposedDropdownMenu(
                     expanded = expanded,
-                    onDismissRequest = { expanded = false }
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier.heightIn(max = 300.dp)
                 ) {
                     serviceTypes.forEach { type ->
                         DropdownMenuItem(
@@ -131,8 +154,8 @@ fun RequestFormScreen(
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text("Request Title", fontSize = 13.sp) },
-                placeholder = { Text("e.g., Fix leaking pipe", fontSize = 13.sp) },
+                label = { Text("Request Title *", fontSize = 13.sp) },
+                placeholder = { Text("e.g., Fix leaking kitchen sink", fontSize = 13.sp) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
@@ -146,8 +169,8 @@ fun RequestFormScreen(
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
-                label = { Text("Description", fontSize = 13.sp) },
-                placeholder = { Text("Describe the service you need...", fontSize = 13.sp) },
+                label = { Text("Description *", fontSize = 13.sp) },
+                placeholder = { Text("Describe the service you need in detail...", fontSize = 13.sp) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 120.dp),
@@ -159,12 +182,15 @@ fun RequestFormScreen(
                 )
             )
 
-            // Preferred Date
+            // Date Picker Field
             OutlinedTextField(
-                value = date,
-                onValueChange = { date = it },
+                value = selectedDate?.let {
+                    SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(it)
+                } ?: "",
+                onValueChange = {},
+                readOnly = true,
                 label = { Text("Preferred Date", fontSize = 13.sp) },
-                placeholder = { Text("e.g., Tomorrow, Next Monday", fontSize = 13.sp) },
+                placeholder = { Text("Select a date (optional)", fontSize = 13.sp) },
                 leadingIcon = {
                     Icon(
                         Icons.Default.CalendarToday,
@@ -173,13 +199,24 @@ fun RequestFormScreen(
                         tint = MaterialTheme.colorScheme.primary
                     )
                 },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
+                trailingIcon = {
+                    if (selectedDate != null) {
+                        TextButton(onClick = { selectedDate = null }) {
+                            Text("Clear", fontSize = 11.sp)
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showDatePicker = true },
+                enabled = false,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                )
+                    disabledBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    disabledLeadingIconColor = MaterialTheme.colorScheme.primary
+                ),
+                shape = RoundedCornerShape(12.dp)
             )
 
             // Error Message
@@ -205,40 +242,25 @@ fun RequestFormScreen(
 
             Button(
                 onClick = {
-                    val user = auth.currentUser
-                    if (user == null) {
-                        error = "You must be logged in"
+                    if (currentUser == null) {
+                        viewModel.setError("You must be logged in")
                         return@Button
                     }
 
                     if (serviceType.isBlank() || title.isBlank() || description.isBlank()) {
-                        error = "Please fill all required fields"
+                        viewModel.setError("Please fill all required fields")
                         return@Button
                     }
 
-                    loading = true
-                    error = null
-
-                    val requestData = hashMapOf(
-                        "serviceType" to serviceType,
-                        "title" to title,
-                        "description" to description,
-                        "date" to date.ifBlank { "ASAP" },
-                        "status" to "Pending",
-                        "createdBy" to user.uid,
-                        "createdAt" to com.google.firebase.Timestamp.now()
-                    )
-
-                    firestore.collection("service_requests")
-                        .add(requestData)
-                        .addOnSuccessListener {
-                            loading = false
+                    viewModel.createRequest(
+                        title = title,
+                        description = description,
+                        serviceType = serviceType,
+                        preferredDate = selectedDate,
+                        onSuccess = {
                             onSubmit()
                         }
-                        .addOnFailureListener { exception ->
-                            loading = false
-                            error = exception.localizedMessage ?: "Failed to submit request"
-                        }
+                    )
                 },
                 enabled = isEnabled,
                 modifier = Modifier
@@ -298,6 +320,35 @@ fun RequestFormScreen(
                     fontWeight = FontWeight.SemiBold
                 )
             }
+        }
+    }
+
+    // Date Picker Dialog
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        dateState.selectedDateMillis?.let { millis ->
+                            // Only allow future dates (including today)
+                            if (millis >= System.currentTimeMillis() - 86400000) {
+                                selectedDate = Date(millis)
+                            }
+                        }
+                        showDatePicker = false
+                    }
+                ) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = dateState)
         }
     }
 }

@@ -1,39 +1,51 @@
-package com.example.article.provider
+package com.example.article.admin
 
 import androidx.compose.foundation.layout.height
-import androidx. compose. ui. text. font. FontWeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx. compose. foundation. layout. fillMaxWidth
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx. compose. foundation. layout. size
-import androidx.navigation.NavHostController
+import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.article.ui.theme.*
 
 @Composable
-fun ProviderBottomBar(navController: NavHostController) {
+fun AdminBottomBar(navController: NavController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
+    // Admin routes that should highlight the Admin tab
+    val adminRoutes = listOf(
+        "admin_dashboard",
+        "member_management",
+        "provider_approval",
+        "announcements",
+        "content_moderation"
+    )
+
     NavigationBar(
         modifier = Modifier
-            .fillMaxWidth()
-            .height(80.dp),
+            .height(70.dp)
+            .shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                spotColor = BluePrimary.copy(alpha = 0.3f)
+            ),
         containerColor = SurfaceLight,
-        tonalElevation = 8.dp
+        tonalElevation = 0.dp
     ) {
-        // Home (Requests)
+        // Home (Member Home - Admin inherits this)
         NavigationBarItem(
-            selected = currentRoute == "provider_home",
+            selected = currentRoute == "home",
             onClick = {
-                navController.navigate("provider_home") {
+                navController.navigate("home") {
                     popUpTo(navController.graph.startDestinationId) {
                         saveState = true
                     }
@@ -43,18 +55,12 @@ fun ProviderBottomBar(navController: NavHostController) {
             },
             icon = {
                 Icon(
-                    Icons.Default.Assignment,
-                    contentDescription = "Requests",
-                    modifier = Modifier.size(26.dp)
+                    Icons.Default.Home,
+                    contentDescription = "Home",
+                    modifier = Modifier.height(24.dp)
                 )
             },
-            label = {
-                Text(
-                    "Requests",
-                    fontSize = 12.sp,
-                    fontWeight = if (currentRoute == "provider_home") FontWeight.Bold else FontWeight.Medium
-                )
-            },
+            label = { Text("Home", fontSize = 12.sp) },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = BluePrimary,
                 selectedTextColor = BluePrimary,
@@ -64,11 +70,40 @@ fun ProviderBottomBar(navController: NavHostController) {
             )
         )
 
-        // Inbox
+        // Admin Dashboard
         NavigationBarItem(
-            selected = currentRoute == "provider_inbox",
+            selected = currentRoute in adminRoutes,
             onClick = {
-                navController.navigate("provider_inbox") {
+                navController.navigate("admin_dashboard") {
+                    popUpTo(navController.graph.startDestinationId) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            },
+            icon = {
+                Icon(
+                    Icons.Default.AdminPanelSettings,
+                    contentDescription = "Admin",
+                    modifier = Modifier.height(24.dp)
+                )
+            },
+            label = { Text("Admin", fontSize = 12.sp) },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = BluePrimary,
+                selectedTextColor = BluePrimary,
+                indicatorColor = BluePrimary.copy(alpha = 0.15f),
+                unselectedIconColor = Color(0xFF999999),
+                unselectedTextColor = Color(0xFF999999)
+            )
+        )
+
+        // Inbox (Member Inbox - Admin inherits this)
+        NavigationBarItem(
+            selected = currentRoute == "inbox",
+            onClick = {
+                navController.navigate("inbox") {
                     popUpTo(navController.graph.startDestinationId) {
                         saveState = true
                     }
@@ -79,17 +114,11 @@ fun ProviderBottomBar(navController: NavHostController) {
             icon = {
                 Icon(
                     Icons.Default.ChatBubble,
-                    contentDescription = "Chats",
-                    modifier = Modifier.size(26.dp)
+                    contentDescription = "Messages",
+                    modifier = Modifier.height(24.dp)
                 )
             },
-            label = {
-                Text(
-                    "Chats",
-                    fontSize = 12.sp,
-                    fontWeight = if (currentRoute == "provider_inbox") FontWeight.Bold else FontWeight.Medium
-                )
-            },
+            label = { Text("Messages", fontSize = 12.sp) },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = BluePrimary,
                 selectedTextColor = BluePrimary,
@@ -99,11 +128,11 @@ fun ProviderBottomBar(navController: NavHostController) {
             )
         )
 
-        // Profile
+        // Profile (Member Profile - Admin inherits this)
         NavigationBarItem(
-            selected = currentRoute == "provider_profile",
+            selected = currentRoute == "profile",
             onClick = {
-                navController.navigate("provider_profile") {
+                navController.navigate("profile") {
                     popUpTo(navController.graph.startDestinationId) {
                         saveState = true
                     }
@@ -115,16 +144,10 @@ fun ProviderBottomBar(navController: NavHostController) {
                 Icon(
                     Icons.Default.Person,
                     contentDescription = "Profile",
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.height(24.dp)
                 )
             },
-            label = {
-                Text(
-                    "Profile",
-                    fontSize = 12.sp,
-                    fontWeight = if (currentRoute == "provider_profile") FontWeight.Bold else FontWeight.Medium
-                )
-            },
+            label = { Text("Profile", fontSize = 12.sp) },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = BluePrimary,
                 selectedTextColor = BluePrimary,

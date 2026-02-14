@@ -22,6 +22,13 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.article.admin.AdminBottomBar
+import com.example.article.admin.AdminDashboardScreen
+import com.example.article.admin.AdminNavigation
+import com.example.article.admin.AnnouncementManagementScreen
+import com.example.article.admin.ContentModerationScreen
+import com.example.article.admin.MemberManagementScreen
+import com.example.article.admin.ProviderApprovalScreen
 import com.example.article.provider.ProviderBottomBar
 import com.example.article.provider.ProviderInboxScreen
 import com.example.article.provider.ProviderProfileScreen
@@ -136,10 +143,14 @@ fun ArticleApp() {
                 ProviderApp(navController, auth)
             }
 
-            UserRole.MEMBER,
-            UserRole.ADMIN -> {
+            UserRole.MEMBER -> {
                 Log.d("ArticleApp", "Showing Member UI")
                 MemberApp(navController, userRole, userNeighborhood, auth)
+            }
+
+            UserRole.ADMIN -> {
+                Log.d("ArticleApp", "Showing Admin UI")
+                AdminApp(navController, userRole, userNeighborhood, auth)
             }
         }
     }
@@ -293,6 +304,155 @@ private fun MemberApp(
                     navController = navController,
                     chatId = chatId,
                     title = title
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminApp(
+    navController: NavHostController,
+    userRole: UserRole,
+    userNeighborhood: String,
+    auth: FirebaseAuth
+) {
+    Scaffold(
+        bottomBar = {
+            AdminBottomBar(navController = navController)
+        }
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = "home",
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            // ============ MEMBER SCREENS (INHERITED) ============
+            composable("home") {
+                HomeScreen(
+                    navController = navController,
+                    userNeighborhood = userNeighborhood
+                )
+            }
+
+            composable("search") {
+                SearchScreen()
+            }
+
+            composable("inbox") {
+                InboxScreen(
+                    navController = navController,
+                    onCreateRequest = {
+                        navController.navigate("request_form")
+                    }
+                )
+            }
+
+            composable("profile") {
+                ProfileScreen(
+                    role = userRole,
+                    onLogout = {
+                        Log.d("AdminApp", "Logout triggered")
+                        auth.signOut()
+                        UserSessionManager.clearSession()
+                    },
+                    onCreatePost = {
+                        navController.navigate("new_post")
+                    }
+                )
+            }
+
+            composable("requests") {
+                RequestsScreen(
+                    onCreateNew = {
+                        navController.navigate("request_form")
+                    }
+                )
+            }
+
+            composable("request_form") {
+                RequestFormScreen(
+                    onCancel = { navController.popBackStack() },
+                    onSubmit = { navController.popBackStack() }
+                )
+            }
+
+            composable("new_post") {
+                NewPostScreen(
+                    onPostUploaded = {
+                        navController.navigate("home") {
+                            popUpTo("home") { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            composable("comments/{postId}/{postAuthorId}") { backStack ->
+                val postId = backStack.arguments?.getString("postId") ?: return@composable
+                val postAuthorId =
+                    backStack.arguments?.getString("postAuthorId") ?: return@composable
+
+                CommentScreen(
+                    postId = postId,
+                    postAuthorId = postAuthorId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("chat/{chatId}/{title}") { backStack ->
+                val chatId = backStack.arguments?.getString("chatId") ?: return@composable
+                val title = backStack.arguments?.getString("title") ?: "Chat"
+
+                ChatScreen(
+                    navController = navController,
+                    chatId = chatId,
+                    title = title
+                )
+            }
+
+            // ============ ADMIN DASHBOARD (ADMIN-SPECIFIC) ============
+            composable("admin_dashboard") {
+                AdminDashboardScreen(
+                    onNavigateToMembers = {
+                        navController.navigate("member_management")
+                    },
+                    onNavigateToProviders = {
+                        navController.navigate("provider_approval")
+                    },
+                    onNavigateToAnnouncements = {
+                        navController.navigate("announcements")
+                    },
+                    onNavigateToModeration = {
+                        navController.navigate("content_moderation")
+                    }
+                )
+            }
+
+            // Member Management Screen
+            composable("member_management") {
+                MemberManagementScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            // Provider Approval Screen
+            composable("provider_approval") {
+                ProviderApprovalScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            // Announcements Screen
+            composable("announcements") {
+                AnnouncementManagementScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            // Content Moderation Screen
+            composable("content_moderation") {
+                ContentModerationScreen(
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
         }
