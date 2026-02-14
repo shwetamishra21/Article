@@ -1,18 +1,17 @@
 package com.example.article.provider
 
 import androidx.compose.foundation.layout.height
-import androidx. compose. ui. text. font. FontWeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx. compose. foundation. layout. fillMaxWidth
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx. compose. foundation. layout. size
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.article.ui.theme.*
@@ -23,36 +22,36 @@ fun ProviderBottomBar(navController: NavHostController) {
     val currentRoute = navBackStackEntry?.destination?.route
 
     NavigationBar(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(80.dp),
+        modifier = Modifier.height(70.dp),
         containerColor = SurfaceLight,
-        tonalElevation = 8.dp
+        tonalElevation = 3.dp
     ) {
-        // Home (Requests)
+        // Requests (Home for providers)
         NavigationBarItem(
             selected = currentRoute == "provider_home",
             onClick = {
-                navController.navigate("provider_home") {
-                    popUpTo(navController.graph.startDestinationId) {
-                        saveState = true
+                if (currentRoute != "provider_home") {
+                    navController.navigate("provider_home") {
+                        launchSingleTop = true
+                        restoreState = true
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
                     }
-                    launchSingleTop = true
-                    restoreState = true
                 }
             },
             icon = {
                 Icon(
                     Icons.Default.Assignment,
                     contentDescription = "Requests",
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             },
             label = {
                 Text(
                     "Requests",
                     fontSize = 12.sp,
-                    fontWeight = if (currentRoute == "provider_home") FontWeight.Bold else FontWeight.Medium
+                    fontWeight = if (currentRoute == "provider_home") FontWeight.SemiBold else FontWeight.Normal
                 )
             },
             colors = NavigationBarItemDefaults.colors(
@@ -64,30 +63,32 @@ fun ProviderBottomBar(navController: NavHostController) {
             )
         )
 
-        // Inbox
+        // Chats/Inbox
         NavigationBarItem(
             selected = currentRoute == "provider_inbox",
             onClick = {
-                navController.navigate("provider_inbox") {
-                    popUpTo(navController.graph.startDestinationId) {
-                        saveState = true
+                if (currentRoute != "provider_inbox") {
+                    navController.navigate("provider_inbox") {
+                        launchSingleTop = true
+                        restoreState = true
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
                     }
-                    launchSingleTop = true
-                    restoreState = true
                 }
             },
             icon = {
                 Icon(
-                    Icons.Default.ChatBubble,
+                    Icons.Default.Chat,
                     contentDescription = "Chats",
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             },
             label = {
                 Text(
                     "Chats",
                     fontSize = 12.sp,
-                    fontWeight = if (currentRoute == "provider_inbox") FontWeight.Bold else FontWeight.Medium
+                    fontWeight = if (currentRoute == "provider_inbox") FontWeight.SemiBold else FontWeight.Normal
                 )
             },
             colors = NavigationBarItemDefaults.colors(
@@ -103,26 +104,28 @@ fun ProviderBottomBar(navController: NavHostController) {
         NavigationBarItem(
             selected = currentRoute == "provider_profile",
             onClick = {
-                navController.navigate("provider_profile") {
-                    popUpTo(navController.graph.startDestinationId) {
-                        saveState = true
+                if (currentRoute != "provider_profile") {
+                    navController.navigate("provider_profile") {
+                        launchSingleTop = true
+                        restoreState = true
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
                     }
-                    launchSingleTop = true
-                    restoreState = true
                 }
             },
             icon = {
                 Icon(
                     Icons.Default.Person,
                     contentDescription = "Profile",
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             },
             label = {
                 Text(
                     "Profile",
                     fontSize = 12.sp,
-                    fontWeight = if (currentRoute == "provider_profile") FontWeight.Bold else FontWeight.Medium
+                    fontWeight = if (currentRoute == "provider_profile") FontWeight.SemiBold else FontWeight.Normal
                 )
             },
             colors = NavigationBarItemDefaults.colors(

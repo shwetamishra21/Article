@@ -302,7 +302,7 @@ fun ProfileScreen(
                                         color = Color(0xFF1a1a1a)
                                     )
 
-                                    if (profile.neighborhood.isNotEmpty()) {
+                                    if (profile.neighbourhood.isNotEmpty()) {
                                         Row(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             verticalAlignment = Alignment.CenterVertically
@@ -314,7 +314,7 @@ fun ProfileScreen(
                                                 tint = Color(0xFF42A5F5)
                                             )
                                             Text(
-                                                text = profile.neighborhood,
+                                                text = profile.neighbourhood,
                                                 fontSize = 14.sp,
                                                 color = Color(0xFF42A5F5),
                                                 fontWeight = FontWeight.Medium
@@ -425,7 +425,7 @@ fun ProfileScreen(
                                         onClick = {
                                             editName = profile.name
                                             editBio = profile.bio
-                                            editNeighborhood = profile.neighborhood
+                                            editNeighborhood = profile.neighbourhood
                                             isEditing = true
                                         },
                                         modifier = Modifier

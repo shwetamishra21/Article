@@ -4,20 +4,17 @@ import com.google.firebase.Timestamp
 
 data class ServiceRequest(
     val id: String = "",
+    val serviceType: String = "",
     val title: String = "",
     val description: String = "",
-    val serviceType: String = "",
-    val memberId: String = "",
     val memberName: String = "",
     val memberNeighborhood: String = "",
-    val providerId: String? = null,
-    val providerName: String? = null,
+    val createdBy: String = "",
+    val assignedTo: String = "",
     val status: String = STATUS_PENDING,
-    val preferredDate: Timestamp? = null,
     val createdAt: Timestamp = Timestamp.now(),
-    val updatedAt: Timestamp = Timestamp.now(),
-    val completedAt: Timestamp? = null,
-    val chatId: String? = null
+    val preferredDate: Timestamp? = null,
+    val completedAt: Timestamp? = null
 ) {
     companion object {
         const val STATUS_PENDING = "pending"
@@ -26,24 +23,23 @@ data class ServiceRequest(
         const val STATUS_COMPLETED = "completed"
         const val STATUS_CANCELLED = "cancelled"
 
-        const val COLLECTION_NAME = "service_requests"
+        const val COLLECTION_NAME = "service_requests"  // ✅ Added
     }
 
-    fun toMap(): Map<String, Any?> = hashMapOf(
-        "id" to id,
-        "title" to title,
-        "description" to description,
-        "serviceType" to serviceType,
-        "memberId" to memberId,
-        "memberName" to memberName,
-        "memberNeighborhood" to memberNeighborhood,
-        "providerId" to providerId,
-        "providerName" to providerName,
-        "status" to status,
-        "preferredDate" to preferredDate,
-        "createdAt" to createdAt,
-        "updatedAt" to updatedAt,
-        "completedAt" to completedAt,
-        "chatId" to chatId
-    )
+    // ✅ Added toMap() function
+    fun toMap(): Map<String, Any?> {
+        return mapOf(
+            "serviceType" to serviceType,
+            "title" to title,
+            "description" to description,
+            "memberName" to memberName,
+            "memberNeighborhood" to memberNeighborhood,
+            "createdBy" to createdBy,
+            "assignedTo" to assignedTo,
+            "status" to status,
+            "createdAt" to createdAt,
+            "preferredDate" to preferredDate,
+            "completedAt" to completedAt
+        )
+    }
 }

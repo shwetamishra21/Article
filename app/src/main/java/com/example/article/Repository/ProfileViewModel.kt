@@ -18,7 +18,7 @@ data class UserProfile(
     val uid: String = "",
     val name: String = "",
     val bio: String = "",
-    val neighborhood: String = "",  // ADDED
+    val neighbourhood: String = "",  // ADDED
     val photoUrl: String = "",
     val email: String = "",
     val role: String = "member"
@@ -66,7 +66,7 @@ class ProfileViewModel : ViewModel() {
                     uid = userId,
                     name = profileDoc.getString("name") ?: "",
                     bio = profileDoc.getString("bio") ?: "",
-                    neighborhood = profileDoc.getString("neighborhood") ?: "",  // ADDED
+                    neighbourhood = profileDoc.getString("neighborhood") ?: "",  // ADDED
                     photoUrl = profileDoc.getString("photoUrl") ?: "",
                     email = profileDoc.getString("email") ?: auth.currentUser?.email ?: "",
                     role = profileDoc.getString("role") ?: "member"

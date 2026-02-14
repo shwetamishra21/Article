@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -45,12 +46,14 @@ fun AdminBottomBar(navController: NavController) {
         NavigationBarItem(
             selected = currentRoute == "home",
             onClick = {
-                navController.navigate("home") {
-                    popUpTo(navController.graph.startDestinationId) {
-                        saveState = true
+                if (currentRoute != "home") {
+                    navController.navigate("home") {
+                        launchSingleTop = true
+                        restoreState = true
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
                     }
-                    launchSingleTop = true
-                    restoreState = true
                 }
             },
             icon = {
@@ -60,7 +63,13 @@ fun AdminBottomBar(navController: NavController) {
                     modifier = Modifier.height(24.dp)
                 )
             },
-            label = { Text("Home", fontSize = 12.sp) },
+            label = {
+                Text(
+                    "Home",
+                    fontSize = 11.sp,
+                    fontWeight = if (currentRoute == "home") FontWeight.SemiBold else FontWeight.Normal
+                )
+            },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = BluePrimary,
                 selectedTextColor = BluePrimary,
@@ -70,26 +79,34 @@ fun AdminBottomBar(navController: NavController) {
             )
         )
 
-        // Admin Dashboard
+        // Search (Member Search - Admin inherits this)
         NavigationBarItem(
-            selected = currentRoute in adminRoutes,
+            selected = currentRoute == "search",
             onClick = {
-                navController.navigate("admin_dashboard") {
-                    popUpTo(navController.graph.startDestinationId) {
-                        saveState = true
+                if (currentRoute != "search") {
+                    navController.navigate("search") {
+                        launchSingleTop = true
+                        restoreState = true
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
                     }
-                    launchSingleTop = true
-                    restoreState = true
                 }
             },
             icon = {
                 Icon(
-                    Icons.Default.AdminPanelSettings,
-                    contentDescription = "Admin",
+                    Icons.Default.Search,
+                    contentDescription = "Search",
                     modifier = Modifier.height(24.dp)
                 )
             },
-            label = { Text("Admin", fontSize = 12.sp) },
+            label = {
+                Text(
+                    "Search",
+                    fontSize = 11.sp,
+                    fontWeight = if (currentRoute == "search") FontWeight.SemiBold else FontWeight.Normal
+                )
+            },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = BluePrimary,
                 selectedTextColor = BluePrimary,
@@ -103,22 +120,67 @@ fun AdminBottomBar(navController: NavController) {
         NavigationBarItem(
             selected = currentRoute == "inbox",
             onClick = {
-                navController.navigate("inbox") {
-                    popUpTo(navController.graph.startDestinationId) {
-                        saveState = true
+                if (currentRoute != "inbox") {
+                    navController.navigate("inbox") {
+                        launchSingleTop = true
+                        restoreState = true
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
                     }
-                    launchSingleTop = true
-                    restoreState = true
                 }
             },
             icon = {
                 Icon(
-                    Icons.Default.ChatBubble,
-                    contentDescription = "Messages",
+                    Icons.Default.Chat,
+                    contentDescription = "Inbox",
                     modifier = Modifier.height(24.dp)
                 )
             },
-            label = { Text("Messages", fontSize = 12.sp) },
+            label = {
+                Text(
+                    "Inbox",
+                    fontSize = 11.sp,
+                    fontWeight = if (currentRoute == "inbox") FontWeight.SemiBold else FontWeight.Normal
+                )
+            },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = BluePrimary,
+                selectedTextColor = BluePrimary,
+                indicatorColor = BluePrimary.copy(alpha = 0.15f),
+                unselectedIconColor = Color(0xFF999999),
+                unselectedTextColor = Color(0xFF999999)
+            )
+        )
+
+        // Admin Dashboard
+        NavigationBarItem(
+            selected = currentRoute in adminRoutes,
+            onClick = {
+                if (currentRoute !in adminRoutes) {
+                    navController.navigate("admin_dashboard") {
+                        launchSingleTop = true
+                        restoreState = true
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
+                    }
+                }
+            },
+            icon = {
+                Icon(
+                    Icons.Default.AdminPanelSettings,
+                    contentDescription = "Admin",
+                    modifier = Modifier.height(24.dp)
+                )
+            },
+            label = {
+                Text(
+                    "Admin",
+                    fontSize = 11.sp,
+                    fontWeight = if (currentRoute in adminRoutes) FontWeight.SemiBold else FontWeight.Normal
+                )
+            },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = BluePrimary,
                 selectedTextColor = BluePrimary,
@@ -132,12 +194,14 @@ fun AdminBottomBar(navController: NavController) {
         NavigationBarItem(
             selected = currentRoute == "profile",
             onClick = {
-                navController.navigate("profile") {
-                    popUpTo(navController.graph.startDestinationId) {
-                        saveState = true
+                if (currentRoute != "profile") {
+                    navController.navigate("profile") {
+                        launchSingleTop = true
+                        restoreState = true
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
                     }
-                    launchSingleTop = true
-                    restoreState = true
                 }
             },
             icon = {
@@ -147,7 +211,13 @@ fun AdminBottomBar(navController: NavController) {
                     modifier = Modifier.height(24.dp)
                 )
             },
-            label = { Text("Profile", fontSize = 12.sp) },
+            label = {
+                Text(
+                    "Profile",
+                    fontSize = 11.sp,
+                    fontWeight = if (currentRoute == "profile") FontWeight.SemiBold else FontWeight.Normal
+                )
+            },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = BluePrimary,
                 selectedTextColor = BluePrimary,

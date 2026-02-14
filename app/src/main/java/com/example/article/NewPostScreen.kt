@@ -33,6 +33,7 @@ import com.example.article.feed.HomeViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.util.UUID
 
 enum class PostType { POST, ANNOUNCEMENT }
@@ -115,7 +116,7 @@ fun NewPostScreen(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ✨ TYPE TOGGLE
+            // TYPE TOGGLE
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -143,7 +144,7 @@ fun NewPostScreen(
                 }
             }
 
-            // ✨ ANNOUNCEMENT TITLE
+            // ANNOUNCEMENT TITLE
             if (selectedType == PostType.ANNOUNCEMENT) {
                 OutlinedTextField(
                     value = title,
@@ -160,7 +161,7 @@ fun NewPostScreen(
                 )
             }
 
-            // ✨ CONTENT
+            // CONTENT
             OutlinedTextField(
                 value = content,
                 onValueChange = { content = it },
@@ -185,7 +186,7 @@ fun NewPostScreen(
                 )
             )
 
-            // ✨ IMAGE UPLOAD (POST ONLY)
+            // IMAGE UPLOAD (POST ONLY)
             if (selectedType == PostType.POST) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
@@ -196,7 +197,6 @@ fun NewPostScreen(
                     )
 
                     if (imageUri != null) {
-                        // Image Preview
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -210,7 +210,6 @@ fun NewPostScreen(
                                 contentScale = ContentScale.Crop
                             )
 
-                            // Remove button
                             IconButton(
                                 onClick = { imageUri = null },
                                 modifier = Modifier
@@ -231,7 +230,6 @@ fun NewPostScreen(
                             }
                         }
                     } else {
-                        // Upload Button
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -268,7 +266,7 @@ fun NewPostScreen(
                 }
             }
 
-            // ✨ ERROR MESSAGE
+            // ERROR MESSAGE
             error?.let {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
@@ -298,7 +296,7 @@ fun NewPostScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // ✨ SUBMIT BUTTON
+            // SUBMIT BUTTON
             val isEnabled = !loading && content.isNotBlank() &&
                     (selectedType == PostType.POST || title.isNotBlank())
 
@@ -321,56 +319,70 @@ fun NewPostScreen(
                     val id = UUID.randomUUID().toString()
                     val timestamp = System.currentTimeMillis()
 
-                    // Optimistic UI
-                    when (selectedType) {
-                        PostType.POST -> {
-                            viewModel.addOptimistic(
-                                FeedItem.Post(
-                                    id = id,
-                                    author = user.email ?: "You",
-                                    authorId = user.uid,
-                                    content = content,
-                                    time = timestamp,
-                                    likes = 0,
-                                    commentCount = 0,
-                                    likedByMe = false,
-                                    imageUrl = imageUri?.toString()
-                                )
-                            )
-                        }
-                        PostType.ANNOUNCEMENT -> {
-                            viewModel.addOptimistic(
-                                FeedItem.Announcement(
-                                    id = id,
-                                    title = title,
-                                    message = content,
-                                    time = timestamp
-                                )
-                            )
-                        }
-                    }
-
-                    // Firestore write
-                    val postData = hashMapOf<String, Any?>(
-                        "type" to selectedType.name.lowercase(),
-                        "content" to content,
-                        "title" to if (selectedType == PostType.ANNOUNCEMENT) title else null,
-                        "authorId" to user.uid,
-                        "authorName" to (user.email ?: "User"),
-                        "likes" to 0,
-                        "likedBy" to emptyMap<String, Boolean>(),
-                        "commentCount" to 0,
-                        "imageUrl" to null,
-                        "createdAt" to com.google.firebase.Timestamp.now()
-                    )
-
                     scope.launch {
                         try {
+                            // ✅ FETCH USER DATA FROM FIRESTORE
+                            val userDoc = firestore.collection("users")
+                                .document(user.uid)
+                                .get()
+                                .await()
+
+                            val userName = userDoc.getString("name")
+                                ?: userDoc.getString("email")
+                                ?: user.email
+                                ?: "User"
+
+                            val userPhotoUrl = userDoc.getString("photoUrl") ?: ""
+
+                            // Optimistic UI
+                            when (selectedType) {
+                                PostType.POST -> {
+                                    viewModel.addOptimistic(
+                                        FeedItem.Post(
+                                            id = id,
+                                            author = userName,
+                                            authorId = user.uid,
+                                            content = content,
+                                            time = timestamp,
+                                            likes = 0,
+                                            commentCount = 0,
+                                            likedByMe = false,
+                                            imageUrl = imageUri?.toString(),
+                                            authorPhotoUrl = userPhotoUrl
+                                        )
+                                    )
+                                }
+                                PostType.ANNOUNCEMENT -> {
+                                    viewModel.addOptimistic(
+                                        FeedItem.Announcement(
+                                            id = id,
+                                            title = title,
+                                            message = content,
+                                            time = timestamp
+                                        )
+                                    )
+                                }
+                            }
+
+                            // Prepare post data
+                            val postData = hashMapOf<String, Any?>(
+                                "type" to selectedType.name.lowercase(),
+                                "content" to content,
+                                "title" to if (selectedType == PostType.ANNOUNCEMENT) title else null,
+                                "authorId" to user.uid,
+                                "authorName" to userName,  // ✅ ACTUAL NAME
+                                "authorPhotoUrl" to userPhotoUrl,  // ✅ PROFILE PICTURE
+                                "likes" to 0,
+                                "likedBy" to emptyMap<String, Boolean>(),
+                                "commentCount" to 0,
+                                "imageUrl" to null,
+                                "createdAt" to com.google.firebase.Timestamp.now()
+                            )
+
                             var imageUrl: String? = null
 
-                            // 🖼 Upload image using Cloudinary if present
+                            // Upload image if present
                             if (imageUri != null) {
-
                                 val result = CloudinaryHelper.uploadImage(
                                     imageUri = imageUri!!,
                                     context = auth.app.applicationContext,
@@ -384,15 +396,16 @@ fun NewPostScreen(
                                 }
                             }
 
-
-                            // Update post data with image URL
+                            // Update with image URL
                             val finalPostData = postData.toMutableMap().apply {
                                 this["imageUrl"] = imageUrl
                             }
 
+                            // Save to Firestore
                             firestore.collection("posts")
                                 .document(id)
                                 .set(finalPostData)
+                                .await()
 
                             loading = false
                             onPostUploaded()

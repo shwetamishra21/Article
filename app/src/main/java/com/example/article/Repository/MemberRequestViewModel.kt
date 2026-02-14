@@ -76,7 +76,7 @@ class MemberRequestViewModel(
                     title = title,
                     description = description,
                     serviceType = serviceType,
-                    memberId = currentUser.uid,
+                    createdBy = currentUser.uid,  // ✅ Changed from memberId
                     memberName = currentUser.name,
                     memberNeighborhood = currentUser.neighbourhood ?: "Unknown",
                     preferredDate = preferredDate?.let { Timestamp(it) },

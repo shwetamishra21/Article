@@ -19,9 +19,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -29,6 +31,8 @@ import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.launch
 import android.util.Log
 import com.google.firebase.firestore.DocumentSnapshot
+import java.text.SimpleDateFormat
+import java.util.*
 
 // Safe Timestamp helper
 private fun DocumentSnapshot.getTimestampSafe(field: String): Timestamp {
@@ -59,6 +63,24 @@ fun CommentScreen(
 
     val listState = rememberLazyListState()
     val currentUserId = auth.currentUser?.uid ?: ""
+
+    // Get current user name and photo
+    var currentUserName by remember { mutableStateOf(auth.currentUser?.email ?: "You") }
+    var currentUserPhoto by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(currentUserId) {
+        if (currentUserId.isNotBlank()) {
+            firestore.collection("users")
+                .document(currentUserId)
+                .get()
+                .addOnSuccessListener { document ->
+                    if (document.exists()) {
+                        currentUserName = document.getString("name") ?: currentUserName
+                        currentUserPhoto = document.getString("profilePictureUrl")
+                    }
+                }
+        }
+    }
 
     LaunchedEffect(postId) {
         if (postId.isBlank()) {
@@ -205,8 +227,8 @@ fun CommentScreen(
                                     id = tempId,
                                     postId = postId,
                                     authorId = user.uid,
-                                    authorName = user.email ?: "You",
-                                    authorPhotoUrl = "",
+                                    authorName = currentUserName,
+                                    authorPhotoUrl = currentUserPhoto ?: "",
                                     content = message.trim(),
                                     createdAt = Timestamp.now()
                                 )
@@ -221,8 +243,8 @@ fun CommentScreen(
                                 CommentRepository.addComment(
                                     postId = postId,
                                     authorId = user.uid,
-                                    authorName = optimistic.authorName,
-                                    authorPhotoUrl = "",
+                                    authorName = currentUserName,
+                                    authorPhotoUrl = currentUserPhoto ?: "",
                                     content = optimistic.content,
                                     onComplete = { error = null },
                                     onError = { err ->
@@ -262,8 +284,27 @@ private fun CommentCard(
     postOwnerId: String,
     onDelete: () -> Unit
 ) {
-    val isDeleting = false  // Temp until repo fixed
+    val isDeleting = false
     val canDelete = currentUserId == comment.authorId || currentUserId == postOwnerId
+
+    // Fetch user profile data if not already present
+    var userName by remember { mutableStateOf(comment.authorName) }
+    var userPhotoUrl by remember { mutableStateOf(comment.authorPhotoUrl) }
+
+    LaunchedEffect(comment.authorId) {
+        if (userName.contains("@") || userName == "User") {
+            val firestore = FirebaseFirestore.getInstance()
+            firestore.collection("users")
+                .document(comment.authorId)
+                .get()
+                .addOnSuccessListener { document ->
+                    if (document.exists()) {
+                        userName = document.getString("name") ?: comment.authorName
+                        userPhotoUrl = document.getString("profilePictureUrl") ?: comment.authorPhotoUrl
+                    }
+                }
+        }
+    }
 
     Card(
         modifier = Modifier
@@ -278,30 +319,65 @@ private fun CommentCard(
     ) {
         Row(Modifier.padding(16.dp)) {
 
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = comment.authorName.firstOrNull()?.uppercase() ?: "?",
-                    fontWeight = FontWeight.Bold
+            // Profile picture or avatar
+            if (!userPhotoUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = userPhotoUrl,
+                    contentDescription = "Profile picture",
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = userName.firstOrNull()?.uppercase() ?: "?",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(Modifier.weight(1f)) {
-                Text(comment.authorName, fontWeight = FontWeight.SemiBold)
-                Text(comment.content)
+                Text(userName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    "Just now",
+                    comment.content,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    formatCommentTimestamp(comment.createdAt.toDate().time),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+    }
+}
+
+// Timestamp formatter for comments
+private fun formatCommentTimestamp(timestamp: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - timestamp
+
+    return when {
+        diff < 60_000 -> "Just now"
+        diff < 3600_000 -> "${diff / 60_000}m ago"
+        diff < 86400_000 -> "${diff / 3600_000}h ago"
+        diff < 604800_000 -> "${diff / 86400_000}d ago"
+        else -> {
+            val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
+            sdf.format(Date(timestamp))
         }
     }
 }
