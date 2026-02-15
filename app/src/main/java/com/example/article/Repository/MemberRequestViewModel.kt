@@ -76,8 +76,7 @@ class MemberRequestViewModel(
                     title = title,
                     description = description,
                     serviceType = serviceType,
-                    createdBy = currentUser.uid,  // ✅ Changed from memberId
-                    memberName = currentUser.name,
+                    memberId = currentUser.uid,  // ✅ CORRECT                    memberName = currentUser.name,
                     memberNeighborhood = currentUser.neighbourhood ?: "Unknown",
                     preferredDate = preferredDate?.let { Timestamp(it) },
                     status = ServiceRequest.STATUS_PENDING

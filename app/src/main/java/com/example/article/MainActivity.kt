@@ -24,7 +24,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.article.admin.AdminBottomBar
 import com.example.article.admin.AdminDashboardScreen
-import com.example.article.admin.AdminNavigation
 import com.example.article.admin.AnnouncementManagementScreen
 import com.example.article.admin.ContentModerationScreen
 import com.example.article.admin.MemberManagementScreen
@@ -173,6 +172,7 @@ private fun ProviderApp(
             modifier = Modifier.padding(innerPadding)
         ) {
 
+            // Provider Requests Screen (Wired with ViewModel)
             composable("provider_home") {
                 ProviderRequestsScreen()
             }
@@ -181,6 +181,7 @@ private fun ProviderApp(
                 ProviderInboxScreen(navController = navController)
             }
 
+            // Provider Profile Screen (Wired with ViewModel)
             composable("provider_profile") {
                 ProviderProfileScreen(
                     onLogout = {
@@ -199,6 +200,17 @@ private fun ProviderApp(
                     navController = navController,
                     chatId = chatId,
                     title = title
+                )
+            }
+
+            composable("view_profile/{userId}/{role}") { backStack ->
+                val userId = backStack.arguments?.getString("userId") ?: return@composable
+                val role = backStack.arguments?.getString("role") ?: return@composable
+
+                ViewProfileScreen(
+                    navController = navController,
+                    userId = userId,
+                    userRole = role
                 )
             }
         }
@@ -233,7 +245,7 @@ private fun MemberApp(
             }
 
             composable("search") {
-                SearchScreen()
+                SearchScreen(navController = navController)
             }
 
             composable("inbox") {
@@ -259,6 +271,7 @@ private fun MemberApp(
                 )
             }
 
+            // Service Requests Screen (Wired with ViewModel)
             composable("requests") {
                 RequestsScreen(
                     onCreateNew = {
@@ -267,6 +280,7 @@ private fun MemberApp(
                 )
             }
 
+            // Request Form Screen (Wired with ViewModel)
             composable("request_form") {
                 RequestFormScreen(
                     onCancel = { navController.popBackStack() },
@@ -306,6 +320,17 @@ private fun MemberApp(
                     title = title
                 )
             }
+
+            composable("view_profile/{userId}/{role}") { backStack ->
+                val userId = backStack.arguments?.getString("userId") ?: return@composable
+                val role = backStack.arguments?.getString("role") ?: return@composable
+
+                ViewProfileScreen(
+                    navController = navController,
+                    userId = userId,
+                    userRole = role
+                )
+            }
         }
     }
 }
@@ -336,7 +361,7 @@ private fun AdminApp(
             }
 
             composable("search") {
-                SearchScreen()
+                SearchScreen(navController = navController)
             }
 
             composable("inbox") {
@@ -410,7 +435,18 @@ private fun AdminApp(
                 )
             }
 
-            // ============ ADMIN DASHBOARD (ADMIN-SPECIFIC) ============
+            composable("view_profile/{userId}/{role}") { backStack ->
+                val userId = backStack.arguments?.getString("userId") ?: return@composable
+                val role = backStack.arguments?.getString("role") ?: return@composable
+
+                ViewProfileScreen(
+                    navController = navController,
+                    userId = userId,
+                    userRole = role
+                )
+            }
+
+            // ============ ADMIN DASHBOARD (WIRED WITH VIEWMODELS) ============
             composable("admin_dashboard") {
                 AdminDashboardScreen(
                     onNavigateToMembers = {
@@ -428,14 +464,14 @@ private fun AdminApp(
                 )
             }
 
-            // Member Management Screen
+            // Member Management Screen (Wired)
             composable("member_management") {
                 MemberManagementScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
 
-            // Provider Approval Screen
+            // Provider Approval Screen (Wired)
             composable("provider_approval") {
                 ProviderApprovalScreen(
                     onNavigateBack = { navController.popBackStack() }

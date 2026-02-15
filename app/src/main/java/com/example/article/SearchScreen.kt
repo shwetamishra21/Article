@@ -21,45 +21,36 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-data class ServiceProvider(
-    val id: String,
-    val name: String,
-    val service: String,
-    val rating: Float,
-    val reviews: Int,
-    val available: Boolean
-)
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
+import coil.compose.AsyncImage
+import com.example.article.Repository.SearchUiState
+import com.example.article.Repository.SearchViewModel
+import com.example.article.Repository.SearchableUser
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SearchScreen() {
+fun SearchScreen(
+    navController: NavController,
+    viewModel: SearchViewModel = viewModel()
+) {
     var searchQuery by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("All") }
+    val uiState by viewModel.uiState.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
 
-    val categories = listOf("All", "Plumber", "Electrician", "Cleaner", "Carpenter", "Painter", "Gardener")
-
-    val allProviders = remember {
-        listOf(
-            ServiceProvider("1", "Mike's Plumbing", "Plumber", 4.8f, 156, true),
-            ServiceProvider("2", "Spark Electric", "Electrician", 4.9f, 203, true),
-            ServiceProvider("3", "Clean Pro", "Cleaner", 4.7f, 89, false),
-            ServiceProvider("4", "Wood Master", "Carpenter", 4.6f, 112, true),
-            ServiceProvider("5", "Perfect Paint", "Painter", 4.8f, 145, true),
-            ServiceProvider("6", "Green Garden", "Gardener", 4.7f, 98, true),
-            ServiceProvider("7", "Fix-It Fast", "Plumber", 4.5f, 78, true),
-            ServiceProvider("8", "Bright Homes", "Cleaner", 4.9f, 234, true)
-        )
+    // Load users on first composition
+    LaunchedEffect(Unit) {
+        viewModel.loadUsers()
     }
 
-    val filteredProviders = remember(searchQuery, selectedCategory) {
-        allProviders.filter { provider ->
-            val matchesSearch = searchQuery.isBlank() ||
-                    provider.name.contains(searchQuery, ignoreCase = true) ||
-                    provider.service.contains(searchQuery, ignoreCase = true)
-            val matchesCategory = selectedCategory == "All" || provider.service == selectedCategory
-            matchesSearch && matchesCategory
-        }
+    // Apply search whenever query changes
+    LaunchedEffect(searchQuery) {
+        viewModel.searchUsers(searchQuery)
+    }
+
+    // Get categories - simplified to always show base categories
+    val categories = remember {
+        listOf("All", "Members", "Providers")
     }
 
     Scaffold(
@@ -67,7 +58,7 @@ fun SearchScreen() {
             TopAppBar(
                 title = {
                     Text(
-                        text = "Search Services",
+                        text = "Search",
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 19.sp,
                         color = Color.White
@@ -105,7 +96,7 @@ fun SearchScreen() {
                     )
                 )
         ) {
-            // ✨ PREMIUM SEARCH BAR
+            // Search Bar
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -114,7 +105,7 @@ fun SearchScreen() {
                     .padding(16.dp),
                 placeholder = {
                     Text(
-                        "Search for services or providers...",
+                        "Search for people or services...",
                         fontSize = 13.sp,
                         color = Color(0xFF666666).copy(alpha = 0.6f)
                     )
@@ -149,7 +140,7 @@ fun SearchScreen() {
                 singleLine = true
             )
 
-            // ✨ CATEGORY CHIPS
+            // Category Chips
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -157,7 +148,7 @@ fun SearchScreen() {
                 items(categories) { category ->
                     FilterChip(
                         selected = selectedCategory == category,
-                        onClick = { selectedCategory = category },
+                        onClick = { viewModel.setCategory(category) },
                         label = {
                             Text(
                                 category,
@@ -185,35 +176,67 @@ fun SearchScreen() {
 
             Spacer(Modifier.height(12.dp))
 
-            // ✨ RESULTS COUNT
-            if (filteredProviders.isNotEmpty()) {
-                Text(
-                    text = "${filteredProviders.size} provider${if (filteredProviders.size != 1) "s" else ""} found",
-                    modifier = Modifier.padding(horizontal = 20.dp),
-                    fontSize = 12.sp,
-                    color = Color(0xFF666666),
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(Modifier.height(8.dp))
-            }
+            // Content
+            when (val state = uiState) {
+                SearchUiState.Idle -> {
+                    EmptyState(
+                        icon = Icons.Default.Search,
+                        title = "Start Searching",
+                        subtitle = "Find members and service providers in your community"
+                    )
+                }
 
-            // ✨ PROVIDER CARDS
-            if (filteredProviders.isEmpty()) {
-                EmptySearchState(searchQuery)
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        bottom = 100.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(
-                        items = filteredProviders,
-                        key = { it.id }
-                    ) { provider ->
-                        ProviderCard(provider)
+                SearchUiState.Loading -> {
+                    LoadingState(message = "Loading users...")
+                }
+
+                is SearchUiState.Error -> {
+                    ErrorState(
+                        message = state.message,
+                        onRetry = { viewModel.loadUsers() }
+                    )
+                }
+
+                is SearchUiState.Success -> {
+                    if (state.users.isNotEmpty()) {
+                        Text(
+                            text = "${state.users.size} result${if (state.users.size != 1) "s" else ""} found",
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            fontSize = 12.sp,
+                            color = Color(0xFF666666),
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    if (state.users.isEmpty()) {
+                        EmptyState(
+                            icon = Icons.Default.SearchOff,
+                            title = "No results found",
+                            subtitle = "Try a different search or category"
+                        )
+                    } else {
+                        LazyColumn(
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                bottom = 100.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(
+                                items = state.users,
+                                key = { it.uid }
+                            ) { user ->
+                                UserCard(
+                                    user = user,
+                                    onClick = {
+                                        // Navigate to profile view
+                                        navController.navigate("view_profile/${user.uid}/${user.role}")
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -222,11 +245,14 @@ fun SearchScreen() {
 }
 
 @Composable
-private fun ProviderCard(provider: ServiceProvider) {
+private fun UserCard(
+    user: SearchableUser,
+    onClick: () -> Unit
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { /* Navigate to details */ },
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = Color.White
@@ -258,19 +284,20 @@ private fun ProviderCard(provider: ServiceProvider) {
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = when (provider.service) {
-                        "Plumber" -> Icons.Default.Build
-                        "Electrician" -> Icons.Default.Bolt
-                        "Cleaner" -> Icons.Default.CleaningServices
-                        "Carpenter" -> Icons.Default.Handyman
-                        "Painter" -> Icons.Default.FormatPaint
-                        else -> Icons.Default.Grass
-                    },
-                    contentDescription = null,
-                    tint = Color(0xFF42A5F5),
-                    modifier = Modifier.size(28.dp)
-                )
+                if (user.photoUrl.isNotEmpty()) {
+                    AsyncImage(
+                        model = user.photoUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        tint = Color(0xFF42A5F5),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
             }
 
             // Content
@@ -279,117 +306,101 @@ private fun ProviderCard(provider: ServiceProvider) {
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = provider.name,
+                    text = user.name.ifEmpty { "User" },
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF1a1a1a)
                 )
 
-                Text(
-                    text = provider.service,
-                    fontSize = 12.sp,
-                    color = Color(0xFF666666)
-                )
+                if (user.role == "service_provider" && user.serviceType.isNotEmpty()) {
+                    Text(
+                        text = user.serviceType,
+                        fontSize = 12.sp,
+                        color = Color(0xFF666666)
+                    )
+                } else if (user.neighbourhood.isNotEmpty()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = Color(0xFF666666)
+                        )
+                        Text(
+                            text = user.neighbourhood,
+                            fontSize = 12.sp,
+                            color = Color(0xFF666666)
+                        )
+                    }
+                }
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Star,
-                        contentDescription = null,
-                        tint = Color(0xFFFFA000),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        text = provider.rating.toString(),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF1a1a1a)
-                    )
-                    Text(
-                        text = "•",
-                        fontSize = 11.sp,
-                        color = Color(0xFF666666)
-                    )
-                    Text(
-                        text = "${provider.reviews} reviews",
-                        fontSize = 11.sp,
-                        color = Color(0xFF666666)
-                    )
+                // Provider rating
+                if (user.role == "service_provider" && user.rating > 0) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Star,
+                            contentDescription = null,
+                            tint = Color(0xFFFFA000),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = user.rating.toString(),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF1a1a1a)
+                        )
+                        Text(
+                            text = "•",
+                            fontSize = 11.sp,
+                            color = Color(0xFF666666)
+                        )
+                        Text(
+                            text = "${user.completedJobs} jobs",
+                            fontSize = 11.sp,
+                            color = Color(0xFF666666)
+                        )
+                    }
                 }
             }
 
-            // Badge
+            // Role Badge
             Surface(
-                color = if (provider.available)
-                    Color(0xFF4CAF50).copy(alpha = 0.15f)
-                else
-                    Color(0xFFB71C1C).copy(alpha = 0.15f),
+                color = when (user.role) {
+                    "service_provider" -> {
+                        if (user.isAvailable)
+                            Color(0xFF4CAF50).copy(alpha = 0.15f)
+                        else
+                            Color(0xFFB71C1C).copy(alpha = 0.15f)
+                    }
+                    "admin" -> Color(0xFFFF9800).copy(alpha = 0.15f)
+                    else -> Color(0xFF42A5F5).copy(alpha = 0.15f)
+                },
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(
-                    text = if (provider.available) "Available" else "Busy",
+                    text = when (user.role) {
+                        "service_provider" -> if (user.isAvailable) "Available" else "Busy"
+                        "admin" -> "Admin"
+                        else -> "Member"
+                    },
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (provider.available) Color(0xFF4CAF50) else Color(0xFFB71C1C)
+                    color = when (user.role) {
+                        "service_provider" -> {
+                            if (user.isAvailable) Color(0xFF4CAF50) else Color(0xFFB71C1C)
+                        }
+                        "admin" -> Color(0xFFFF9800)
+                        else -> Color(0xFF42A5F5)
+                    }
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun EmptySearchState(query: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(48.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFF42A5F5).copy(alpha = 0.15f),
-                                Color(0xFF42A5F5).copy(alpha = 0.05f)
-                            )
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.SearchOff,
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp),
-                    tint = Color(0xFF42A5F5).copy(alpha = 0.6f)
-                )
-            }
-
-            Text(
-                text = if (query.isBlank())
-                    "No providers available"
-                else
-                    "No results found",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF1a1a1a)
-            )
-
-
-            Text(
-                text = "Try a different search or category",
-                fontSize = 12.sp,
-                color = Color(0xFF666666)
-            )
         }
     }
 }

@@ -16,7 +16,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.article.Repository.MemberManagementViewModel
+import com.example.article.Repository.ProviderApprovalViewModel
 import com.example.article.ui.theme.*
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -24,8 +28,25 @@ fun AdminDashboardScreen(
     onNavigateToMembers: () -> Unit,
     onNavigateToProviders: () -> Unit,
     onNavigateToAnnouncements: () -> Unit,
-    onNavigateToModeration: () -> Unit
+    onNavigateToModeration: () -> Unit,
+    memberViewModel: MemberManagementViewModel = viewModel(),
+    providerViewModel: ProviderApprovalViewModel = viewModel()
 ) {
+    val members by memberViewModel.members.collectAsState()
+    val providers by providerViewModel.providers.collectAsState()
+    val scope = rememberCoroutineScope()
+
+    // Load data on screen open
+    LaunchedEffect(Unit) {
+        scope.launch {
+            memberViewModel.loadMembers()
+            providerViewModel.loadProviders()
+        }
+    }
+
+    val activeProviders = providers.count { it.status == "approved" }
+    val pendingProviders = providers.count { it.status == "pending" }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -81,14 +102,14 @@ fun AdminDashboardScreen(
                         modifier = Modifier.weight(1f),
                         icon = Icons.Default.Person,
                         title = "Members",
-                        value = "156",
+                        value = members.size.toString(),
                         backgroundColor = BluePrimary.copy(alpha = 0.15f)
                     )
                     StatCard(
                         modifier = Modifier.weight(1f),
                         icon = Icons.Default.Build,
                         title = "Providers",
-                        value = "23",
+                        value = activeProviders.toString(),
                         backgroundColor = BlueSecondary.copy(alpha = 0.15f)
                     )
                 }
@@ -101,17 +122,17 @@ fun AdminDashboardScreen(
                 ) {
                     StatCard(
                         modifier = Modifier.weight(1f),
-                        icon = Icons.Default.Assignment,
-                        title = "Active",
-                        value = "42",
-                        backgroundColor = BlueTertiary.copy(alpha = 0.15f)
+                        icon = Icons.Default.HourglassEmpty,
+                        title = "Pending",
+                        value = pendingProviders.toString(),
+                        backgroundColor = Color(0xFFFF9800).copy(alpha = 0.15f)
                     )
                     StatCard(
                         modifier = Modifier.weight(1f),
-                        icon = Icons.Default.CheckCircle,
-                        title = "Completed",
-                        value = "289",
-                        backgroundColor = Color(0xFF4CAF50).copy(alpha = 0.15f)
+                        icon = Icons.Default.Group,
+                        title = "Total",
+                        value = (members.size + activeProviders).toString(),
+                        backgroundColor = BlueTertiary.copy(alpha = 0.15f)
                     )
                 }
             }
@@ -133,6 +154,7 @@ fun AdminDashboardScreen(
                     icon = Icons.Default.Group,
                     title = "Member Management",
                     description = "Add/remove members from neighbourhood",
+                    badge = members.size.toString(),
                     onClick = onNavigateToMembers
                 )
             }
@@ -142,6 +164,7 @@ fun AdminDashboardScreen(
                     icon = Icons.Default.Verified,
                     title = "Provider Approval",
                     description = "Approve/remove service providers",
+                    badge = if (pendingProviders > 0) "$pendingProviders pending" else null,
                     onClick = onNavigateToProviders
                 )
             }
@@ -225,6 +248,7 @@ fun AdminActionCard(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     description: String,
+    badge: String? = null,
     onClick: () -> Unit
 ) {
     Surface(
@@ -266,12 +290,31 @@ fun AdminActionCard(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = OnSurfaceLight
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = OnSurfaceLight
+                    )
+                    badge?.let {
+                        Surface(
+                            color = Color(0xFFFF9800).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = it,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFF9800)
+                            )
+                        }
+                    }
+                }
                 Text(
                     text = description,
                     fontSize = 13.sp,

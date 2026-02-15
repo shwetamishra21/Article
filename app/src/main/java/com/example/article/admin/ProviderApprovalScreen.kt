@@ -15,68 +15,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-
-data class ServiceProvider(
-    val id: String,
-    val name: String,
-    val category: String,
-    val skills: List<String>,
-    val rating: Float?,
-    val reviewCount: Int,
-    val status: ProviderStatus
-)
-
-enum class ProviderStatus {
-    PENDING, APPROVED, REJECTED
-}
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.article.Repository.ProviderApprovalViewModel
+import com.example.article.Repository.AdminProvider
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProviderApprovalScreen(
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    viewModel: ProviderApprovalViewModel = viewModel()
 ) {
+    val providers by viewModel.providers.collectAsState()
+    val loading by viewModel.loading.collectAsState()
+    val error by viewModel.error.collectAsState()
+    val scope = rememberCoroutineScope()
+
     var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf("Pending", "Approved", "Rejected")
 
-    var showApproveDialog by remember { mutableStateOf<ServiceProvider?>(null) }
-    var showRejectDialog by remember { mutableStateOf<ServiceProvider?>(null) }
-    var showRemoveDialog by remember { mutableStateOf<ServiceProvider?>(null) }
+    var showApproveDialog by remember { mutableStateOf<AdminProvider?>(null) }
+    var showRejectDialog by remember { mutableStateOf<AdminProvider?>(null) }
+    var showRemoveDialog by remember { mutableStateOf<AdminProvider?>(null) }
 
-    // Sample data
-    val providers = remember {
-        listOf(
-            ServiceProvider(
-                "1", "Mike's Plumbing", "Plumber",
-                listOf("Pipe repair", "Leak fixing", "Installation"),
-                4.8f, 156, ProviderStatus.APPROVED
-            ),
-            ServiceProvider(
-                "2", "Spark Electric", "Electrician",
-                listOf("Wiring", "Repairs", "Installation"),
-                4.9f, 203, ProviderStatus.APPROVED
-            ),
-            ServiceProvider(
-                "3", "Quick Fix AC", "AC Technician",
-                listOf("AC Repair", "Installation", "Maintenance"),
-                null, 0, ProviderStatus.PENDING
-            ),
-            ServiceProvider(
-                "4", "Home Painters", "Painter",
-                listOf("Interior", "Exterior", "Wall design"),
-                null, 0, ProviderStatus.PENDING
-            ),
-            ServiceProvider(
-                "5", "Budget Repairs", "Handyman",
-                listOf("General repairs"),
-                3.2f, 12, ProviderStatus.REJECTED
-            )
-        )
+    // Load providers on screen open
+    LaunchedEffect(Unit) {
+        scope.launch {
+            viewModel.loadProviders()
+        }
     }
 
     val filteredProviders = when (selectedTab) {
-        0 -> providers.filter { it.status == ProviderStatus.PENDING }
-        1 -> providers.filter { it.status == ProviderStatus.APPROVED }
-        2 -> providers.filter { it.status == ProviderStatus.REJECTED }
+        0 -> providers.filter { it.status == "pending" }
+        1 -> providers.filter { it.status == "approved" }
+        2 -> providers.filter { it.status == "rejected" }
         else -> providers
     }
 
@@ -115,6 +87,39 @@ fun ProviderApprovalScreen(
                         text = { Text(title) }
                     )
                 }
+            }
+
+            // Loading State
+            if (loading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+                return@Column
+            }
+
+            // Error State
+            error?.let {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Error: $it",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Button(onClick = { scope.launch { viewModel.loadProviders() } }) {
+                            Text("Retry")
+                        }
+                    }
+                }
+                return@Column
             }
 
             // Providers List
@@ -162,7 +167,9 @@ fun ProviderApprovalScreen(
             confirmText = "Approve",
             onDismiss = { showApproveDialog = null },
             onConfirm = {
-                // TODO: Approve provider logic
+                scope.launch {
+                    viewModel.approveProvider(provider.id)
+                }
                 showApproveDialog = null
             }
         )
@@ -179,7 +186,9 @@ fun ProviderApprovalScreen(
             confirmColor = MaterialTheme.colorScheme.error,
             onDismiss = { showRejectDialog = null },
             onConfirm = {
-                // TODO: Reject provider logic
+                scope.launch {
+                    viewModel.rejectProvider(provider.id)
+                }
                 showRejectDialog = null
             }
         )
@@ -196,7 +205,9 @@ fun ProviderApprovalScreen(
             confirmColor = MaterialTheme.colorScheme.error,
             onDismiss = { showRemoveDialog = null },
             onConfirm = {
-                // TODO: Remove provider logic
+                scope.launch {
+                    viewModel.removeProvider(provider.id)
+                }
                 showRemoveDialog = null
             }
         )
@@ -205,7 +216,7 @@ fun ProviderApprovalScreen(
 
 @Composable
 fun ProviderCard(
-    provider: ServiceProvider,
+    provider: AdminProvider,
     onApprove: () -> Unit,
     onReject: () -> Unit,
     onRemove: () -> Unit
@@ -227,9 +238,9 @@ fun ProviderCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Icon based on category
-                val icon = when (provider.category) {
-                    "Plumber" -> Icons.Default.Plumbing
-                    "Electrician" -> Icons.Default.ElectricalServices
+                val icon = when (provider.category.lowercase()) {
+                    "plumber" -> Icons.Default.Plumbing
+                    "electrician" -> Icons.Default.ElectricalServices
                     else -> Icons.Default.Build
                 }
 
@@ -285,36 +296,40 @@ fun ProviderCard(
                 // Status Badge
                 Surface(
                     color = when (provider.status) {
-                        ProviderStatus.PENDING -> MaterialTheme.colorScheme.secondaryContainer
-                        ProviderStatus.APPROVED -> MaterialTheme.colorScheme.tertiaryContainer
-                        ProviderStatus.REJECTED -> MaterialTheme.colorScheme.errorContainer
+                        "pending" -> MaterialTheme.colorScheme.secondaryContainer
+                        "approved" -> MaterialTheme.colorScheme.tertiaryContainer
+                        "rejected" -> MaterialTheme.colorScheme.errorContainer
+                        else -> MaterialTheme.colorScheme.surfaceVariant
                     },
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Text(
-                        text = provider.status.name.lowercase().replaceFirstChar { it.uppercase() },
+                        text = provider.status.replaceFirstChar { it.uppercase() },
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelMedium,
                         color = when (provider.status) {
-                            ProviderStatus.PENDING -> MaterialTheme.colorScheme.onSecondaryContainer
-                            ProviderStatus.APPROVED -> MaterialTheme.colorScheme.onTertiaryContainer
-                            ProviderStatus.REJECTED -> MaterialTheme.colorScheme.onErrorContainer
+                            "pending" -> MaterialTheme.colorScheme.onSecondaryContainer
+                            "approved" -> MaterialTheme.colorScheme.onTertiaryContainer
+                            "rejected" -> MaterialTheme.colorScheme.onErrorContainer
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
                         }
                     )
                 }
             }
 
             // Skills
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "Skills: ${provider.skills.joinToString(", ")}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
+            if (provider.skills.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Skills: ${provider.skills.joinToString(", ")}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+            }
 
             // Action Buttons
             when (provider.status) {
-                ProviderStatus.PENDING -> {
+                "pending" -> {
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -344,7 +359,7 @@ fun ProviderCard(
                         }
                     }
                 }
-                ProviderStatus.APPROVED -> {
+                "approved" -> {
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedButton(
                         onClick = onRemove,
@@ -358,7 +373,7 @@ fun ProviderCard(
                         Text("Remove Provider")
                     }
                 }
-                ProviderStatus.REJECTED -> {
+                "rejected" -> {
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = onApprove,

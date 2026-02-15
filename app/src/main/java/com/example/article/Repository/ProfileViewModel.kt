@@ -6,29 +6,31 @@ import androidx.lifecycle.viewModelScope
 import com.example.article.FeedItem
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
+import android.util.Log
+import com.google.firebase.Timestamp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import android. content. Context
+import android.content.Context
 import kotlinx.coroutines.launch
-import com. example. article. utils. CloudinaryHelper
+import com.example.article.utils.CloudinaryHelper
 import kotlinx.coroutines.tasks.await
 
 data class UserProfile(
     val uid: String = "",
     val name: String = "",
     val bio: String = "",
-    val neighbourhood: String = "",  // ADDED
+    val neighbourhood: String = "",
     val photoUrl: String = "",
     val email: String = "",
-    val role: String = "member"
+    val role: String = "member",
+    val skills: List<String> = emptyList()
 )
 
 sealed class ProfileUiState {
     object Loading : ProfileUiState()
     data class Success(
         val profile: UserProfile,
-        val posts: List<FeedItem.Post>
+        val posts: List<FeedItem.Post> = emptyList()
     ) : ProfileUiState()
     data class Error(val message: String) : ProfileUiState()
 }
@@ -44,7 +46,11 @@ class ProfileViewModel : ViewModel() {
     private val _isUpdating = MutableStateFlow(false)
     val isUpdating: StateFlow<Boolean> = _isUpdating
 
-    /* ==================== LOAD PROFILE ==================== */
+    companion object {
+        private const val TAG = "ProfileViewModel"
+    }
+
+    /* ==================== LOAD PROFILE (Own Profile) ==================== */
 
     fun loadProfile() {
         val userId = auth.currentUser?.uid ?: run {
@@ -66,13 +72,14 @@ class ProfileViewModel : ViewModel() {
                     uid = userId,
                     name = profileDoc.getString("name") ?: "",
                     bio = profileDoc.getString("bio") ?: "",
-                    neighbourhood = profileDoc.getString("neighborhood") ?: "",  // ADDED
+                    neighbourhood = profileDoc.getString("neighbourhood") ?: "",
                     photoUrl = profileDoc.getString("photoUrl") ?: "",
                     email = profileDoc.getString("email") ?: auth.currentUser?.email ?: "",
-                    role = profileDoc.getString("role") ?: "member"
+                    role = profileDoc.getString("role") ?: "member",
+                    skills = (profileDoc.get("skills") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
                 )
 
-                // ✅ NO INDEX REQUIRED - Query only by authorId, sort in memory
+                // Query only by authorId, sort in memory
                 val postsSnapshot = firestore.collection("posts")
                     .whereEqualTo("authorId", userId)
                     .get()
@@ -103,15 +110,17 @@ class ProfileViewModel : ViewModel() {
                                 imageUrl = doc.getString("imageUrl")
                             )
                         } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing post", e)
                             null
                         }
                     }
-                    .sortedByDescending { it.time }  // Sort client-side by timestamp
-                    .take(20)  // Limit to 20 most recent posts
+                    .sortedByDescending { it.time }
+                    .take(20)
 
                 _uiState.value = ProfileUiState.Success(profile, posts)
 
             } catch (e: Exception) {
+                Log.e(TAG, "Error loading profile", e)
                 _uiState.value = ProfileUiState.Error(
                     e.localizedMessage ?: "Failed to load profile"
                 )
@@ -119,11 +128,12 @@ class ProfileViewModel : ViewModel() {
         }
     }
 
-    /* ==================== GET NEIGHBORHOOD (Helper) ==================== */
+    /* ==================== UPDATE PROFILE (Member) ==================== */
+
     fun updateProfile(
         name: String,
         bio: String,
-        neighborhood: String,
+        neighbourhood: String,
         onComplete: () -> Unit
     ) {
         val userId = auth.currentUser?.uid ?: return
@@ -138,7 +148,7 @@ class ProfileViewModel : ViewModel() {
                         mapOf(
                             "name" to name,
                             "bio" to bio,
-                            "neighborhood" to neighborhood
+                            "neighbourhood" to neighbourhood
                         )
                     )
                     .await()
@@ -148,6 +158,7 @@ class ProfileViewModel : ViewModel() {
                 onComplete()
 
             } catch (e: Exception) {
+                Log.e(TAG, "Error updating profile", e)
                 _isUpdating.value = false
                 _uiState.value = ProfileUiState.Error(
                     e.localizedMessage ?: "Failed to update profile"
@@ -155,6 +166,51 @@ class ProfileViewModel : ViewModel() {
             }
         }
     }
+
+    /* ==================== UPDATE PROVIDER PROFILE ==================== */
+
+    fun updateProviderProfile(
+        name: String,
+        bio: String,
+        serviceType: String,
+        skills: List<String>,
+        isAvailable: Boolean,
+        onComplete: () -> Unit
+    ) {
+        val userId = auth.currentUser?.uid ?: return
+
+        viewModelScope.launch {
+            try {
+                _isUpdating.value = true
+
+                firestore.collection("users")
+                    .document(userId)
+                    .update(
+                        mapOf(
+                            "name" to name,
+                            "bio" to bio,
+                            "serviceType" to serviceType,
+                            "skills" to skills,
+                            "isAvailable" to isAvailable
+                        )
+                    )
+                    .await()
+
+                loadProfile() // refresh UI
+                _isUpdating.value = false
+                onComplete()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating provider profile", e)
+                _isUpdating.value = false
+                _uiState.value = ProfileUiState.Error(
+                    e.localizedMessage ?: "Failed to update profile"
+                )
+            }
+        }
+    }
+
+    /* ==================== GET NEIGHBORHOOD (Helper) ==================== */
 
     suspend fun getUserNeighborhood(): String {
         return try {
@@ -165,14 +221,12 @@ class ProfileViewModel : ViewModel() {
                 .get()
                 .await()
 
-            userDoc.getString("neighborhood")?.takeIf { it.isNotBlank() } ?: "Your Neighborhood"
+            userDoc.getString("neighbourhood")?.takeIf { it.isNotBlank() } ?: "Your Neighborhood"
         } catch (e: Exception) {
+            Log.e(TAG, "Error getting neighborhood", e)
             "Your Neighborhood"
         }
     }
-
-    /* ==================== UPDATE PROFILE ==================== */
-
 
     /* ==================== UPLOAD PROFILE IMAGE ==================== */
 
@@ -227,6 +281,7 @@ class ProfileViewModel : ViewModel() {
                 onComplete()
 
             } catch (e: Exception) {
+                Log.e(TAG, "Error uploading image", e)
                 _isUpdating.value = false
                 _uiState.value =
                     ProfileUiState.Error(e.localizedMessage ?: "Failed to upload image")
@@ -253,7 +308,82 @@ class ProfileViewModel : ViewModel() {
                 }
 
             } catch (e: Exception) {
-                // Silently fail or show toast
+                Log.e(TAG, "Error deleting post", e)
+            }
+        }
+    }
+
+    /* ==================== LOAD USER PROFILE (For viewing others with POSTS) ==================== */
+
+    fun loadUserProfile(userId: String) {
+        viewModelScope.launch {
+            try {
+                _uiState.value = ProfileUiState.Loading
+
+                val doc = firestore.collection("users")
+                    .document(userId)
+                    .get()
+                    .await()
+
+                if (!doc.exists()) {
+                    _uiState.value = ProfileUiState.Error("User not found")
+                    return@launch
+                }
+
+                val profile = UserProfile(
+                    uid = doc.id,
+                    email = doc.getString("email") ?: "",
+                    name = doc.getString("name") ?: "",
+                    role = doc.getString("role") ?: "member",
+                    neighbourhood = doc.getString("neighbourhood") ?: "",
+                    bio = doc.getString("bio") ?: "",
+                    photoUrl = doc.getString("photoUrl") ?: "",
+                    skills = (doc.get("skills") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+                )
+
+                // Load posts for this user
+                val postsSnapshot = firestore.collection("posts")
+                    .whereEqualTo("authorId", userId)
+                    .get()
+                    .await()
+
+                val posts = postsSnapshot.documents
+                    .mapNotNull { postDoc ->
+                        try {
+                            val type = postDoc.getString("type") ?: return@mapNotNull null
+                            if (type != "post") return@mapNotNull null
+
+                            val timestamp = when (val createdAt = postDoc.get("createdAt")) {
+                                is com.google.firebase.Timestamp -> createdAt.toDate().time
+                                is Long -> createdAt
+                                else -> System.currentTimeMillis()
+                            }
+
+                            FeedItem.Post(
+                                id = postDoc.id,
+                                author = postDoc.getString("authorName") ?: "",
+                                authorId = postDoc.getString("authorId") ?: userId,
+                                content = postDoc.getString("content") ?: "",
+                                time = timestamp,
+                                likes = (postDoc.getLong("likes") ?: 0L).toInt(),
+                                commentCount = (postDoc.getLong("commentCount") ?: 0L).toInt(),
+                                likedByMe = false,
+                                imageUrl = postDoc.getString("imageUrl")
+                            )
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing post", e)
+                            null
+                        }
+                    }
+                    .sortedByDescending { it.time }
+                    .take(20)
+
+                _uiState.value = ProfileUiState.Success(profile, posts)
+                Log.d(TAG, "Loaded user profile for $userId with ${posts.size} posts")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading user profile", e)
+                _uiState.value = ProfileUiState.Error(e.message ?: "Failed to load profile")
             }
         }
     }

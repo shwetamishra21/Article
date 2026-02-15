@@ -32,6 +32,10 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.article.Repository.ProfileViewModel
 import com.example.article.Repository.ProfileUiState
 import com.example.article.ui.theme.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,15 +46,22 @@ fun ProviderProfileScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isUpdating by viewModel.isUpdating.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var isEditing by remember { mutableStateOf(false) }
     var editName by remember { mutableStateOf("") }
     var editBio by remember { mutableStateOf("") }
     var editServiceType by remember { mutableStateOf("Plumber") }
+    var editSkills by remember { mutableStateOf<List<String>>(emptyList()) }
     var isAvailable by remember { mutableStateOf(true) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var showLogoutDialog by remember { mutableStateOf(false) }
     var expandedServiceType by remember { mutableStateOf(false) }
+    var showSkillsDialog by remember { mutableStateOf(false) }
+
+    // Provider stats
+    var completedJobs by remember { mutableStateOf(0) }
+    var activeRequests by remember { mutableStateOf(0) }
 
     val serviceTypes = listOf(
         "Plumber", "Electrician", "Cleaner", "Carpenter", "Painter",
@@ -59,6 +70,19 @@ fun ProviderProfileScreen(
         "Beautician", "Tutor", "Chef/Cook", "Driver", "Security Guard",
         "Moving & Packing", "Interior Designer", "Solar Panel Installer",
         "Water Tank Cleaner", "Car Wash", "Other"
+    )
+
+    val availableSkills = listOf(
+        "Residential",
+        "Commercial",
+        "Emergency Services",
+        "Installation",
+        "Repair & Maintenance",
+        "Consultation",
+        "24/7 Available",
+        "Licensed & Insured",
+        "5+ Years Experience",
+        "Background Checked"
     )
 
     val imagePicker = rememberLauncherForActivityResult(
@@ -74,6 +98,49 @@ fun ProviderProfileScreen(
 
     LaunchedEffect(Unit) {
         viewModel.loadProfile()
+    }
+
+    // Load provider stats
+    LaunchedEffect(uiState) {
+        if (uiState is ProfileUiState.Success) {
+            val profile = (uiState as ProfileUiState.Success).profile
+            scope.launch {
+                try {
+                    val firestore = FirebaseFirestore.getInstance()
+                    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
+
+                    // Load service type and availability
+                    val userDoc = firestore.collection("users")
+                        .document(userId)
+                        .get()
+                        .await()
+
+                    editServiceType = userDoc.getString("serviceType") ?: "Plumber"
+                    isAvailable = userDoc.getBoolean("isAvailable") ?: true
+
+                    // Get completed jobs
+                    val completedSnapshot = firestore.collection("service_requests")
+                        .whereEqualTo("providerId", userId)
+                        .whereEqualTo("status", "completed")
+                        .get()
+                        .await()
+
+                    completedJobs = completedSnapshot.size()
+
+                    // Get active requests
+                    val activeSnapshot = firestore.collection("service_requests")
+                        .whereEqualTo("providerId", userId)
+                        .whereIn("status", listOf("accepted", "in_progress"))
+                        .get()
+                        .await()
+
+                    activeRequests = activeSnapshot.size()
+
+                } catch (e: Exception) {
+                    // Silently fail
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -200,7 +267,7 @@ fun ProviderProfileScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(18.dp)
                         ) {
-                            // Profile Image with Gradient Border
+                            // Profile Image
                             Box(
                                 modifier = Modifier
                                     .size(110.dp)
@@ -248,7 +315,7 @@ fun ProviderProfileScreen(
                                     }
                                 }
 
-                                // Camera icon overlay
+                                // Camera icon
                                 Surface(
                                     modifier = Modifier
                                         .align(Alignment.BottomEnd)
@@ -266,7 +333,7 @@ fun ProviderProfileScreen(
                                 }
                             }
 
-                            // Name & Service Type
+                            // Editing Fields
                             if (isEditing) {
                                 OutlinedTextField(
                                     value = editName,
@@ -322,6 +389,48 @@ fun ProviderProfileScreen(
                                     }
                                 }
 
+                                // Skills Selector
+                                OutlinedCard(
+                                    onClick = { showSkillsDialog = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.outlinedCardColors(
+                                        containerColor = Color.Transparent
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        Color(0xFFE0E0E0)
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                "Skills",
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF666666)
+                                            )
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(
+                                                if (editSkills.isEmpty()) "Select skills..."
+                                                else "${editSkills.size} selected",
+                                                fontSize = 14.sp,
+                                                color = Color(0xFF1a1a1a)
+                                            )
+                                        }
+                                        Icon(
+                                            Icons.Default.ArrowDropDown,
+                                            contentDescription = null,
+                                            tint = Color(0xFF666666)
+                                        )
+                                    }
+                                }
+
                                 OutlinedTextField(
                                     value = editBio,
                                     onValueChange = { editBio = it },
@@ -336,6 +445,7 @@ fun ProviderProfileScreen(
                                     )
                                 )
                             } else {
+                                // View Mode
                                 Text(
                                     text = profile.name.ifEmpty { "Set your name" },
                                     fontSize = 24.sp,
@@ -371,6 +481,51 @@ fun ProviderProfileScreen(
                                     }
                                 }
 
+                                // Skills Chips
+                                if (profile.skills.isNotEmpty()) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        profile.skills.chunked(2).forEach { rowSkills ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                                            ) {
+                                                rowSkills.forEach { skill ->
+                                                    Surface(
+                                                        color = BlueSecondary.copy(alpha = 0.2f),
+                                                        shape = RoundedCornerShape(8.dp)
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(
+                                                                horizontal = 12.dp,
+                                                                vertical = 6.dp
+                                                            ),
+                                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Default.CheckCircle,
+                                                                contentDescription = null,
+                                                                modifier = Modifier.size(14.dp),
+                                                                tint = BlueSecondary
+                                                            )
+                                                            Text(
+                                                                text = skill,
+                                                                fontSize = 12.sp,
+                                                                color = BlueSecondary,
+                                                                fontWeight = FontWeight.Medium
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
                                 Text(
                                     text = profile.bio.ifEmpty { "Add a bio to tell clients about your expertise" },
                                     fontSize = 14.sp,
@@ -398,7 +553,13 @@ fun ProviderProfileScreen(
                                     }
                                     Button(
                                         onClick = {
-                                            viewModel.updateProfile(editName, editBio, "") {
+                                            viewModel.updateProviderProfile(
+                                                editName,
+                                                editBio,
+                                                editServiceType,
+                                                editSkills,
+                                                isAvailable
+                                            ) {
                                                 isEditing = false
                                             }
                                         },
@@ -429,6 +590,7 @@ fun ProviderProfileScreen(
                                     onClick = {
                                         editName = profile.name
                                         editBio = profile.bio
+                                        editSkills = profile.skills
                                         isEditing = true
                                     },
                                     modifier = Modifier
@@ -449,7 +611,7 @@ fun ProviderProfileScreen(
 
                     Spacer(Modifier.height(16.dp))
 
-                    // Availability Toggle Card
+                    // Availability Toggle
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -496,9 +658,7 @@ fun ProviderProfileScreen(
 
                             Switch(
                                 checked = isAvailable,
-                                onCheckedChange = {
-                                    isAvailable = it
-                                },
+                                onCheckedChange = { isAvailable = it },
                                 colors = SwitchDefaults.colors(
                                     checkedTrackColor = BluePrimary,
                                     checkedThumbColor = BlueOnPrimary
@@ -518,12 +678,12 @@ fun ProviderProfileScreen(
                     ) {
                         StatCard(
                             label = "Completed",
-                            value = "0",
+                            value = completedJobs.toString(),
                             modifier = Modifier.weight(1f)
                         )
                         StatCard(
                             label = "Active",
-                            value = "0",
+                            value = activeRequests.toString(),
                             modifier = Modifier.weight(1f)
                         )
                         StatCard(
@@ -537,7 +697,69 @@ fun ProviderProfileScreen(
         }
     }
 
-    // Logout Confirmation Dialog
+    // Skills Selection Dialog
+    if (showSkillsDialog) {
+        AlertDialog(
+            onDismissRequest = { showSkillsDialog = false },
+            title = { Text("Select Skills", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    availableSkills.forEach { skill ->
+                        val isSelected = skill in editSkills
+                        Surface(
+                            onClick = {
+                                editSkills = if (isSelected) {
+                                    editSkills - skill
+                                } else {
+                                    editSkills + skill
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) BluePrimary.copy(alpha = 0.15f) else Color.Transparent,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSelected) BluePrimary else Color(0xFFE0E0E0)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    skill,
+                                    fontSize = 14.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) BluePrimary else Color(0xFF1a1a1a)
+                                )
+                                if (isSelected) {
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = BluePrimary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSkillsDialog = false }) {
+                    Text("Done", color = BluePrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    // Logout Dialog
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },

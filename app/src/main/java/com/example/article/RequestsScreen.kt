@@ -19,68 +19,38 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.article.Repository.MemberRequestViewModel
+import com.example.article.Repository.ServiceRequest
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.tasks.await
-
-data class ServiceRequest(
-    val id: String = "",
-    val serviceType: String = "",
-    val title: String = "",
-    val description: String = "",
-    val date: String = "",
-    val status: String = "Pending",
-    val createdBy: String = "",
-    val createdAt: Long = 0L
-)
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RequestsScreen(
-    onCreateNew: () -> Unit
+    onCreateNew: () -> Unit,
+    viewModel: MemberRequestViewModel = viewModel()
 ) {
-    var requests by remember { mutableStateOf<List<ServiceRequest>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-
     val auth = FirebaseAuth.getInstance()
-    val firestore = FirebaseFirestore.getInstance()
+    val userId = auth.currentUser?.uid
 
-    LaunchedEffect(Unit) {
-        val userId = auth.currentUser?.uid
-        if (userId == null) {
-            error = "Not authenticated"
-            loading = false
-            return@LaunchedEffect
+    val requests by viewModel.requests.collectAsState()
+    val loading by viewModel.loading.collectAsState()
+    val error by viewModel.error.collectAsState()
+
+    // Load member requests
+    LaunchedEffect(userId) {
+        userId?.let {
+            viewModel.loadMemberRequests(it)
         }
+    }
 
-        try {
-            val snapshot = firestore.collection("service_requests")
-                .whereEqualTo("createdBy", userId)
-                .get()
-                .await()
-
-            requests = snapshot.documents.mapNotNull { doc ->
-                try {
-                    ServiceRequest(
-                        id = doc.id,
-                        serviceType = doc.getString("serviceType") ?: "",
-                        title = doc.getString("title") ?: "",
-                        description = doc.getString("description") ?: "",
-                        date = doc.getString("date") ?: "",
-                        status = doc.getString("status") ?: "Pending",
-                        createdBy = doc.getString("createdBy") ?: "",
-                        createdAt = doc.getLong("createdAt") ?: 0L
-                    )
-                } catch (e: Exception) {
-                    null
-                }
-            }.sortedByDescending { it.createdAt }
-
-            loading = false
-        } catch (e: Exception) {
-            error = e.localizedMessage ?: "Failed to load requests"
-            loading = false
+    // Show error snackbar
+    error?.let { errorMessage ->
+        LaunchedEffect(errorMessage) {
+            kotlinx.coroutines.delay(3000)
+            viewModel.clearError()
         }
     }
 
@@ -116,6 +86,16 @@ fun RequestsScreen(
                     tint = Color.White
                 )
             }
+        },
+        snackbarHost = {
+            error?.let {
+                Snackbar(
+                    modifier = Modifier.padding(16.dp),
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Text(it)
+                }
+            }
         }
     ) { padding ->
         Box(
@@ -132,7 +112,7 @@ fun RequestsScreen(
                 )
         ) {
             when {
-                loading -> {
+                loading && requests.isEmpty() -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -145,7 +125,7 @@ fun RequestsScreen(
                     }
                 }
 
-                error != null -> {
+                !loading && error != null && requests.isEmpty() -> {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -184,7 +164,10 @@ fun RequestsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(requests, key = { it.id }) { request ->
-                            RequestCard(request)
+                            RequestCard(
+                                request = request,
+                                onCancel = { viewModel.cancelRequest(request.id) }
+                            )
                         }
                     }
                 }
@@ -194,7 +177,12 @@ fun RequestsScreen(
 }
 
 @Composable
-private fun RequestCard(request: ServiceRequest) {
+private fun RequestCard(
+    request: ServiceRequest,
+    onCancel: () -> Unit
+) {
+    var showCancelDialog by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -218,28 +206,30 @@ private fun RequestCard(request: ServiceRequest) {
                     modifier = Modifier.weight(1f)
                 )
 
-                // ✨ IMPROVED STATUS CHIP - Matches cancel button style
+                // Status Chip
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = when (request.status) {
-                        "Pending" -> Color(0xFFFF9800).copy(alpha = 0.15f)
-                        "Accepted" -> Color(0xFF4CAF50).copy(alpha = 0.15f)
-                        "Completed" -> Color(0xFF42A5F5).copy(alpha = 0.15f)
-                        "Cancelled" -> Color(0xFFB71C1C).copy(alpha = 0.15f)
+                        ServiceRequest.STATUS_PENDING -> Color(0xFFFF9800).copy(alpha = 0.15f)
+                        ServiceRequest.STATUS_ACCEPTED -> Color(0xFF4CAF50).copy(alpha = 0.15f)
+                        ServiceRequest.STATUS_IN_PROGRESS -> Color(0xFF2196F3).copy(alpha = 0.15f)
+                        ServiceRequest.STATUS_COMPLETED -> Color(0xFF4CAF50).copy(alpha = 0.15f)
+                        ServiceRequest.STATUS_CANCELLED -> Color(0xFFB71C1C).copy(alpha = 0.15f)
                         else -> Color(0xFF666666).copy(alpha = 0.15f)
                     },
                     shadowElevation = 1.dp
                 ) {
                     Text(
-                        text = request.status,
+                        text = request.status.uppercase(),
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = when (request.status) {
-                            "Pending" -> Color(0xFFFF9800)
-                            "Accepted" -> Color(0xFF4CAF50)
-                            "Completed" -> Color(0xFF42A5F5)
-                            "Cancelled" -> Color(0xFFB71C1C)
+                            ServiceRequest.STATUS_PENDING -> Color(0xFFFF9800)
+                            ServiceRequest.STATUS_ACCEPTED -> Color(0xFF4CAF50)
+                            ServiceRequest.STATUS_IN_PROGRESS -> Color(0xFF2196F3)
+                            ServiceRequest.STATUS_COMPLETED -> Color(0xFF4CAF50)
+                            ServiceRequest.STATUS_CANCELLED -> Color(0xFFB71C1C)
                             else -> Color(0xFF666666)
                         }
                     )
@@ -269,11 +259,21 @@ private fun RequestCard(request: ServiceRequest) {
                     color = Color(0xFF666666)
                 )
 
-                Text(
-                    text = request.date,
-                    fontSize = 11.sp,
-                    color = Color(0xFF666666)
-                )
+                // Show preferred date or "ASAP"
+                request.preferredDate?.let {
+                    Text(
+                        text = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+                            .format(it.toDate()),
+                        fontSize = 11.sp,
+                        color = Color(0xFF666666)
+                    )
+                } ?: run {
+                    Text(
+                        text = "ASAP",
+                        fontSize = 11.sp,
+                        color = Color(0xFF666666)
+                    )
+                }
             }
 
             Text(
@@ -284,7 +284,50 @@ private fun RequestCard(request: ServiceRequest) {
                 maxLines = 2
             )
 
-            if (request.status == "Pending") {
+            // Show provider info if assigned
+            if (request.providerId != null && request.providerName != null) {
+                HorizontalDivider(
+                    thickness = 1.dp,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        modifier = Modifier.size(32.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = request.providerName.firstOrNull()?.uppercase() ?: "P",
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+
+                    Column {
+                        Text(
+                            text = "Provider",
+                            fontSize = 10.sp,
+                            color = Color(0xFF999999)
+                        )
+                        Text(
+                            text = request.providerName,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF1a1a1a)
+                        )
+                    }
+                }
+            }
+
+            // Cancel button for pending requests only
+            if (request.status == ServiceRequest.STATUS_PENDING) {
                 HorizontalDivider(
                     thickness = 1.dp,
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
@@ -295,7 +338,7 @@ private fun RequestCard(request: ServiceRequest) {
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(
-                        onClick = { /* Cancel request */ },
+                        onClick = { showCancelDialog = true },
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
@@ -308,6 +351,31 @@ private fun RequestCard(request: ServiceRequest) {
                 }
             }
         }
+    }
+
+    // Cancel Confirmation Dialog
+    if (showCancelDialog) {
+        AlertDialog(
+            onDismissRequest = { showCancelDialog = false },
+            title = { Text("Cancel Request", fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to cancel this service request?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onCancel()
+                        showCancelDialog = false
+                    }
+                ) {
+                    Text("Cancel Request", color = Color(0xFFB71C1C), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelDialog = false }) {
+                    Text("Keep Request")
+                }
+            },
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 }
 
