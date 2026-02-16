@@ -1,72 +1,71 @@
-package com.example.article.Repository
+package com.example.article.chat
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.article.ChatThread
-import com.example.article.core.UiState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+data class InboxUiState(
+    val chats: List<ChatThread> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null
+)
 
 class InboxViewModel : ViewModel() {
 
-    private val _uiState = MutableStateFlow<UiState<List<ChatThread>>>(UiState.Loading)
-    val uiState: StateFlow<UiState<List<ChatThread>>> = _uiState
+    private val _uiState = MutableStateFlow(InboxUiState())
+    val uiState: StateFlow<InboxUiState> = _uiState.asStateFlow()
 
-    private var currentUserId: String? = null
+    private var inboxListener: Job? = null
 
-    companion object {
-        private const val TAG = "InboxViewModel"
-    }
+    // ==================== LOAD INBOX ====================
 
-    /**
-     * Start observing inbox for logged-in user
-     */
     fun loadInbox(userId: String) {
-        if (currentUserId == userId) {
-            Log.d(TAG, "Already observing inbox for user: $userId")
-            return
-        }
+        if (inboxListener != null) return
 
-        currentUserId = userId
-        _uiState.value = UiState.Loading
+        _uiState.value = InboxUiState(isLoading = true)
 
-        viewModelScope.launch {
-            try {
-                ChatRepository.observeInbox(userId).collect { chats ->
-                    _uiState.value = UiState.Success(chats)
-                    Log.d(TAG, "Inbox updated with ${chats.size} chats")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error loading inbox", e)
-                _uiState.value = UiState.Error(
-                    e.message ?: "Failed to load inbox"
+        inboxListener = viewModelScope.launch {
+            ChatRepository.observeInbox(userId).collect { chats ->
+                _uiState.value = InboxUiState(
+                    chats = chats,
+                    isLoading = false
                 )
             }
         }
     }
 
-    /**
-     * Refresh inbox
-     */
-    fun refresh() {
-        currentUserId?.let { userId ->
-            Log.d(TAG, "Refreshing inbox for user: $userId")
-            currentUserId = null // Force reload
-            loadInbox(userId)
-        }
+    // ==================== CREATE CHAT ====================
+
+    suspend fun createOrGetChat(
+        currentUserId: String,
+        otherUserId: String,
+        currentUserName: String,
+        otherUserName: String,
+        currentUserPhoto: String = "",
+        otherUserPhoto: String = "",
+        type: String = ChatThread.TYPE_MEMBER,
+        serviceRequestId: String? = null
+    ): Result<String> {
+        return ChatRepository.getOrCreateChat(
+            userId1 = currentUserId,
+            userId2 = otherUserId,
+            user1Name = currentUserName,
+            user2Name = otherUserName,
+            user1Photo = currentUserPhoto,
+            user2Photo = otherUserPhoto,
+            type = type,
+            serviceRequestId = serviceRequestId
+        )
     }
 
-    /**
-     * Alias for start method (for compatibility)
-     */
-    fun start(userId: String) {
-        loadInbox(userId)
-    }
+    // ==================== CLEANUP ====================
 
     override fun onCleared() {
-        Log.d(TAG, "InboxViewModel cleared")
         super.onCleared()
+        inboxListener?.cancel()
     }
 }

@@ -23,9 +23,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.article.Repository.ChatRepository
-import com.example.article.Repository.InboxViewModel
-import com.example.article.core.UiState
+import com.example.article.chat.ChatRepository
+import com.example.article.chat.ChatThread
+import com.example.article.chat.InboxViewModel
+import com.example.article.chat.InboxUiState
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
@@ -135,8 +137,10 @@ fun InboxScreen(
                 }
             }
 
-            when (val state = uiState) {
-                UiState.Loading -> {
+            val currentState = uiState
+
+            when {
+                currentState.isLoading -> {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -151,10 +155,39 @@ fun InboxScreen(
                     }
                 }
 
-                is UiState.Success<*> -> {
-                    val allChats = (state.data as? List<*>)
-                        ?.filterIsInstance<ChatThread>()
-                        ?: emptyList()
+                currentState.error != null -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Unable to load inbox",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = currentState.error,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(
+                                onClick = { userId?.let { viewModel.loadInbox(it) } },
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Retry")
+                            }
+                        }
+                    }
+                }
+
+                else -> {
+                    val allChats = currentState.chats
 
                     val filteredChats = allChats.filter {
                         if (selectedTab == 0) it.type == "service" else it.type == "member"
@@ -175,39 +208,6 @@ fun InboxScreen(
                         )
                     }
                 }
-
-                is UiState.Error -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Unable to load inbox",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = state.message,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Button(
-                                onClick = { userId?.let { viewModel.loadInbox(it) } },
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Retry")
-                            }
-                        }
-                    }
-                }
-
-                UiState.Idle -> Unit
             }
         }
 
@@ -217,18 +217,27 @@ fun InboxScreen(
                 onUserSelected = { selectedUser ->
                     scope.launch {
                         val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+                        val currentUserName = FirebaseAuth.getInstance().currentUser?.displayName ?: "You"
+                        val currentUserPhoto = FirebaseAuth.getInstance().currentUser?.photoUrl?.toString() ?: ""
+
                         if (currentUserId != null) {
                             val result = ChatRepository.getOrCreateChat(
-                                currentUserId = currentUserId,
-                                otherUserId = selectedUser.uid,
-                                otherUserName = selectedUser.name,
+                                userId1 = currentUserId,
+                                userId2 = selectedUser.uid,
+                                user1Name = currentUserName,
+                                user2Name = selectedUser.name,
+                                user1Photo = currentUserPhoto,
+                                user2Photo = selectedUser.photoUrl,
                                 type = "member"
                             )
 
                             result.fold(
                                 onSuccess = { chatId ->
                                     showUserPickerDialog = false
-                                    navController.navigate("chat/$chatId/${selectedUser.name}")
+                                    // Simple navigation - chat screen will load user data
+                                    navController.navigate(
+                                        "chat/$chatId/${selectedUser.uid}/loading/loading"
+                                    )
                                 },
                                 onFailure = { }
                             )
@@ -247,10 +256,7 @@ fun InboxScreen(
                     TextButton(
                         onClick = {
                             scope.launch {
-                                val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
-                                if (currentUserId != null) {
-                                    ChatRepository.deleteChat(chatToDelete!!.id, currentUserId)
-                                }
+                                ChatRepository.deleteChat(chatToDelete!!.id)
                                 chatToDelete = null
                             }
                         }
@@ -290,13 +296,27 @@ private fun InboxList(
             items = chats,
             key = { it.id }
         ) { chat ->
+            // Get other user info
+            val otherUserId = chat.participants.firstOrNull { it != currentUserId } ?: ""
+
             ConversationCard(
                 chat = chat,
+                currentUserId = currentUserId,
                 onClick = {
                     scope.launch {
                         ChatRepository.markChatAsRead(chat.id, currentUserId)
                     }
-                    navController.navigate("chat/${chat.id}/${chat.title}")
+                    // Simple navigation - chat screen will load user data from Firestore
+                    val route = "chat/${chat.id}/$otherUserId/loading/loading"
+                    android.util.Log.d("InboxScreen", "Navigating to: $route")
+                    android.util.Log.d("InboxScreen", "chatId: ${chat.id}, otherUserId: $otherUserId")
+
+                    try {
+                        navController.navigate(route)
+                        android.util.Log.d("InboxScreen", "Navigation successful")
+                    } catch (e: Exception) {
+                        android.util.Log.e("InboxScreen", "Navigation failed", e)
+                    }
                 },
                 onDelete = { onDeleteChat(chat) }
             )
@@ -308,10 +328,17 @@ private fun InboxList(
 @Composable
 private fun ConversationCard(
     chat: ChatThread,
+    currentUserId: String,
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
+
+    // Get unread count for current user
+    val unreadCount = chat.unreadCounts[currentUserId] ?: 0
+
+    // Check if someone is typing
+    val isTyping = chat.typingUsers.isNotEmpty() && !chat.typingUsers.contains(currentUserId)
 
     Card(
         modifier = Modifier
@@ -359,7 +386,7 @@ private fun ConversationCard(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // ✅ Name + Time Row
+                // Name + Time Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -368,7 +395,7 @@ private fun ConversationCard(
                     Text(
                         text = chat.title,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (chat.unreadCount > 0) FontWeight.Bold else FontWeight.SemiBold,
+                        fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.SemiBold,
                         fontSize = 16.sp,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
@@ -378,40 +405,53 @@ private fun ConversationCard(
 
                     Spacer(Modifier.width(8.dp))
 
-                    // ✅ Time ago
+                    // Time ago
                     Text(
                         text = formatTimeAgo(chat.lastMessageAt),
                         fontSize = 13.sp,
-                        color = if (chat.unreadCount > 0)
+                        color = if (unreadCount > 0)
                             MaterialTheme.colorScheme.primary
                         else
                             MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = if (chat.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal
+                        fontWeight = if (unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal
                     )
                 }
 
-                // ✅ Last Message + Unread Badge Row
+                // Last Message + Unread Badge Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = chat.lastMessage.ifEmpty { "No messages yet" },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (chat.unreadCount > 0)
-                            MaterialTheme.colorScheme.onSurface
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = if (chat.unreadCount > 0) FontWeight.Medium else FontWeight.Normal,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontSize = 14.sp,
-                        modifier = Modifier.weight(1f)
-                    )
+                    // Show typing indicator or last message
+                    if (isTyping) {
+                        Text(
+                            text = "typing...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                            fontSize = 14.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        Text(
+                            text = chat.lastMessage.ifEmpty { "No messages yet" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (unreadCount > 0)
+                                MaterialTheme.colorScheme.onSurface
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = if (unreadCount > 0) FontWeight.Medium else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontSize = 14.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
 
-                    // ✅ Unread Badge
-                    if (chat.unreadCount > 0) {
+                    // Unread Badge
+                    if (unreadCount > 0) {
                         Spacer(Modifier.width(8.dp))
                         Surface(
                             shape = CircleShape,
@@ -424,7 +464,7 @@ private fun ConversationCard(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = if (chat.unreadCount > 99) "99+" else chat.unreadCount.toString(),
+                                    text = if (unreadCount > 99) "99+" else unreadCount.toString(),
                                     color = Color.White,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
@@ -435,7 +475,7 @@ private fun ConversationCard(
                 }
             }
 
-            // ✅ 3-dot Menu
+            // 3-dot Menu
             Box {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(
@@ -469,10 +509,11 @@ private fun ConversationCard(
     }
 }
 
-// ✅ Format time ago (like WhatsApp)
-private fun formatTimeAgo(timestamp: Long): String {
+// Format time ago (like WhatsApp) - Updated to handle Timestamp
+private fun formatTimeAgo(timestamp: Timestamp): String {
     val now = System.currentTimeMillis()
-    val diff = now - timestamp
+    val timestampMillis = timestamp.toDate().time
+    val diff = now - timestampMillis
 
     return when {
         diff < 60_000 -> "now" // Less than 1 minute
@@ -482,12 +523,12 @@ private fun formatTimeAgo(timestamp: Long): String {
         diff < 604800_000 -> {
             // This week - show day name
             val sdf = SimpleDateFormat("EEE", Locale.getDefault())
-            sdf.format(Date(timestamp))
+            sdf.format(timestamp.toDate())
         }
         else -> {
             // Older - show date
             val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
-            sdf.format(Date(timestamp))
+            sdf.format(timestamp.toDate())
         }
     }
 }

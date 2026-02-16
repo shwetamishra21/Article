@@ -1,15 +1,12 @@
-package com.example.article
+package com.example.article.chat
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -21,59 +18,95 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.article.Repository.ChatRepository
+import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(
+fun EnhancedChatScreen(
     navController: NavController,
     chatId: String,
-    title: String,
+    otherUserId: String,
+    otherUserName: String,
+    otherUserPhoto: String = "",
     viewModel: ChatViewModel = viewModel()
 ) {
-    var message by remember { mutableStateOf("") }
+    android.util.Log.d("EnhancedChatScreen", "=== CHAT SCREEN OPENED ===")
+    android.util.Log.d("EnhancedChatScreen", "chatId: $chatId")
+    android.util.Log.d("EnhancedChatScreen", "otherUserId: $otherUserId")
+    android.util.Log.d("EnhancedChatScreen", "otherUserName: $otherUserName")
+    android.util.Log.d("EnhancedChatScreen", "otherUserPhoto: $otherUserPhoto")
+
+    // State for user info loaded from Firestore
+    var loadedUserName by remember { mutableStateOf(otherUserName) }
+    var loadedUserPhoto by remember { mutableStateOf(otherUserPhoto) }
+
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
 
-    var showDeleteChatDialog by remember { mutableStateOf(false) }
-    var selectedMessageForDelete by remember { mutableStateOf<ChatMessage?>(null) }
+    var messageText by remember { mutableStateOf("") }
+    var lastTypingTime by remember { mutableLongStateOf(0L) }
 
-    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: "unknown"
+    val currentUser = FirebaseAuth.getInstance().currentUser
+    val currentUserId = currentUser?.uid ?: return
+    val currentUserName = currentUser.displayName ?: currentUser.email ?: "You"
+    val currentUserPhoto = currentUser.photoUrl?.toString() ?: ""
 
-    // Observe messages AND mark as read when opening
+    // Load user info from chat if parameters are empty
     LaunchedEffect(chatId) {
-        viewModel.observeMessages(chatId)
-        ChatRepository.markChatAsRead(chatId, currentUserId)
+        android.util.Log.d("EnhancedChatScreen", "LaunchedEffect triggered for chatId: $chatId")
+
+        if (loadedUserName.isEmpty() || loadedUserName == "null" || loadedUserName == "loading") {
+            android.util.Log.d("EnhancedChatScreen", "Loading user data from Firestore...")
+            try {
+                val chatDoc = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                    .collection("chats")
+                    .document(chatId)
+                    .get()
+                    .await()
+
+                android.util.Log.d("EnhancedChatScreen", "Chat doc loaded: ${chatDoc.exists()}")
+
+                val participantNames = chatDoc.get("participantNames") as? Map<*, *>
+                val participantPhotos = chatDoc.get("participantPhotos") as? Map<*, *>
+
+                loadedUserName = participantNames?.get(otherUserId)?.toString() ?: "User"
+                loadedUserPhoto = participantPhotos?.get(otherUserId)?.toString() ?: ""
+
+                android.util.Log.d("EnhancedChatScreen", "Loaded name: $loadedUserName, photo: $loadedUserPhoto")
+            } catch (e: Exception) {
+                android.util.Log.e("EnhancedChatScreen", "Error loading user data", e)
+                loadedUserName = "User"
+            }
+        }
+
+        android.util.Log.d("EnhancedChatScreen", "Starting to observe messages...")
+        viewModel.observeMessages(
+            chatId = chatId,
+            currentUserId = currentUserId,
+            otherUserName = loadedUserName,
+            otherUserPhoto = loadedUserPhoto
+        )
     }
 
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.lastIndex)
-        }
-    }
-
-    // Show error snackbar if needed
-    val snackbarHostState = remember { SnackbarHostState() }
-    LaunchedEffect(uiState.error) {
-        uiState.error?.let { errorMessage ->
-            snackbarHostState.showSnackbar(
-                message = errorMessage,
-                duration = SnackbarDuration.Short
-            )
-            viewModel.clearError()
+            scope.launch {
+                listState.animateScrollToItem(uiState.messages.lastIndex)
+            }
         }
     }
 
@@ -81,21 +114,57 @@ fun ChatScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 18.sp,
-                            color = Color.White
-                        )
-                        if (uiState.isLoading) {
-                            Text(
-                                text = "Loading...",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontSize = 12.sp,
-                                color = Color.White.copy(alpha = 0.8f)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Profile picture
+                        if (loadedUserPhoto.isNotEmpty()) {
+                            AsyncImage(
+                                model = loadedUserPhoto,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
                             )
+                        } else {
+                            Surface(
+                                modifier = Modifier.size(36.dp),
+                                shape = CircleShape,
+                                color = Color(0xFF42A5F5).copy(alpha = 0.2f)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = loadedUserName.firstOrNull()?.uppercase() ?: "?",
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF42A5F5)
+                                    )
+                                }
+                            }
+                        }
+
+                        Column {
+                            Text(
+                                text = loadedUserName,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+
+                            // Typing indicator
+                            AnimatedVisibility(
+                                visible = uiState.typingUsers.isNotEmpty(),
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                Text(
+                                    text = "typing...",
+                                    fontSize = 12.sp,
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                )
+                            }
                         }
                     }
                 },
@@ -104,16 +173,6 @@ fun ChatScreen(
                         Icon(
                             Icons.Default.ArrowBack,
                             contentDescription = "Back",
-                            tint = Color.White
-                        )
-                    }
-                },
-                actions = {
-                    // ✅ Delete Chat Button
-                    IconButton(onClick = { showDeleteChatDialog = true }) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Delete chat",
                             tint = Color.White
                         )
                     }
@@ -135,8 +194,7 @@ fun ChatScreen(
                         spotColor = Color(0xFF42A5F5).copy(alpha = 0.3f)
                     )
             )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -144,7 +202,7 @@ fun ChatScreen(
                 .padding(padding)
                 .background(Color(0xFFFAFAFA))
         ) {
-            // Messages List with Date Separators
+            // Messages List
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -154,7 +212,7 @@ fun ChatScreen(
                     horizontal = 16.dp,
                     vertical = 16.dp
                 ),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 when {
                     uiState.isLoading && uiState.messages.isEmpty() -> {
@@ -186,39 +244,22 @@ fun ChatScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(64.dp)
-                                            .clip(RoundedCornerShape(50))
-                                            .background(
-                                                Brush.radialGradient(
-                                                    colors = listOf(
-                                                        Color(0xFF42A5F5).copy(alpha = 0.1f),
-                                                        Color(0xFF42A5F5).copy(alpha = 0.05f)
-                                                    )
-                                                )
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Send,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(32.dp),
-                                            tint = Color(0xFF42A5F5).copy(alpha = 0.6f)
-                                        )
-                                    }
-
-                                    Text(
-                                        text = "No messages yet",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 18.sp
+                                    Icon(
+                                        Icons.Default.ChatBubbleOutline,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(64.dp),
+                                        tint = Color(0xFF42A5F5).copy(alpha = 0.4f)
                                     )
                                     Text(
-                                        text = "Start the conversation!",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = Color(0xFF666666),
-                                        fontSize = 14.sp
+                                        "No messages yet",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF666666)
+                                    )
+                                    Text(
+                                        "Say hi to ${otherUserName}!",
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF999999)
                                     )
                                 }
                             }
@@ -226,34 +267,20 @@ fun ChatScreen(
                     }
 
                     else -> {
-                        // ✅ Group messages by date
-                        val groupedMessages = uiState.messages.groupBy { msg ->
-                            getDateLabel(msg.timestamp)
-                        }
+                        items(
+                            items = uiState.messages,
+                            key = { it.id }
+                        ) { message ->
+                            val isMine = message.senderId == currentUserId
 
-                        groupedMessages.forEach { (dateLabel, messagesInDate) ->
-                            // ✅ Date Separator
-                            item(key = "date_$dateLabel") {
-                                DateSeparator(dateLabel)
-                            }
-
-                            // Messages for this date
-                            items(
-                                items = messagesInDate,
-                                key = { it.id }
-                            ) { msg ->
+                            if (message.isSystemMessage) {
+                                SystemMessageBubble(message = message)
+                            } else {
                                 MessageBubble(
-                                    message = msg,
-                                    isMine = msg.senderId == currentUserId,
-                                    onLongPress = {
-                                        selectedMessageForDelete = msg
-                                    },
-                                    onCopy = {
-                                        copyToClipboard(context, msg.text)
-                                        scope.launch {
-                                            snackbarHostState.showSnackbar("Copied to clipboard")
-                                        }
-                                    }
+                                    message = message,
+                                    isMine = isMine,
+                                    showReadReceipt = isMine,
+                                    isRead = message.isReadBy(otherUserId)
                                 )
                             }
                         }
@@ -275,13 +302,25 @@ fun ChatScreen(
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // Message Input
                     OutlinedTextField(
-                        value = message,
-                        onValueChange = { message = it },
+                        value = messageText,
+                        onValueChange = { newText ->
+                            messageText = newText
+
+                            // Typing indicator logic
+                            val now = System.currentTimeMillis()
+                            if (newText.isNotBlank() && now - lastTypingTime > 1000) {
+                                viewModel.onTyping(chatId, currentUserId)
+                                lastTypingTime = now
+                            } else if (newText.isBlank()) {
+                                viewModel.onStopTyping(chatId, currentUserId)
+                            }
+                        },
                         modifier = Modifier.weight(1f),
                         placeholder = {
                             Text(
-                                text = "Type a message…",
+                                text = "Message ${otherUserName}...",
                                 color = Color(0xFF666666).copy(alpha = 0.6f),
                                 fontSize = 15.sp
                             )
@@ -295,27 +334,31 @@ fun ChatScreen(
                             focusedContainerColor = Color.White,
                             unfocusedContainerColor = Color.White
                         ),
-                        textStyle = LocalTextStyle.current.copy(fontSize = 15.sp),
-                        enabled = !uiState.isSending
+                        textStyle = LocalTextStyle.current.copy(fontSize = 15.sp)
                     )
 
+                    // Send Button
                     IconButton(
                         onClick = {
-                            if (message.isNotBlank() && !uiState.isSending) {
+                            if (messageText.isNotBlank()) {
                                 viewModel.sendMessage(
                                     chatId = chatId,
-                                    text = message.trim(),
-                                    senderId = currentUserId
+                                    currentUserId = currentUserId,
+                                    currentUserName = currentUserName,
+                                    currentUserPhoto = currentUserPhoto,
+                                    text = messageText.trim(),
+                                    recipientId = otherUserId
                                 )
-                                message = ""
+                                messageText = ""
+                                viewModel.onStopTyping(chatId, currentUserId)
                             }
                         },
-                        enabled = message.isNotBlank() && !uiState.isSending,
+                        enabled = messageText.isNotBlank(),
                         modifier = Modifier
                             .size(48.dp)
                             .clip(RoundedCornerShape(24.dp))
                             .background(
-                                if (message.isNotBlank() && !uiState.isSending)
+                                if (messageText.isNotBlank())
                                     Brush.linearGradient(
                                         colors = listOf(
                                             Color(0xFF42A5F5),
@@ -331,132 +374,39 @@ fun ChatScreen(
                                     )
                             )
                     ) {
-                        if (uiState.isSending) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color = Color.White
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Send,
-                                contentDescription = "Send",
-                                tint = if (message.isNotBlank())
-                                    Color.White
-                                else
-                                    Color(0xFF666666),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ✅ Delete Message Dialog
-    if (selectedMessageForDelete != null) {
-        AlertDialog(
-            onDismissRequest = { selectedMessageForDelete = null },
-            title = { Text("Delete Message") },
-            text = { Text("Are you sure you want to delete this message?") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteMessage(
-                            chatId = chatId,
-                            messageId = selectedMessageForDelete!!.id,
-                            userId = currentUserId
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Send",
+                            tint = if (messageText.isNotBlank())
+                                Color.White
+                            else
+                                Color(0xFF666666),
+                            modifier = Modifier.size(20.dp)
                         )
-                        selectedMessageForDelete = null
                     }
-                ) {
-                    Text("Delete", color = Color.Red)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { selectedMessageForDelete = null }) {
-                    Text("Cancel")
                 }
             }
-        )
-    }
-
-    // ✅ Delete Chat Dialog
-    if (showDeleteChatDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteChatDialog = false },
-            title = { Text("Delete Conversation") },
-            text = { Text("Are you sure you want to delete this entire conversation? This cannot be undone.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            ChatRepository.deleteChat(chatId, currentUserId)
-                            showDeleteChatDialog = false
-                            navController.popBackStack()
-                        }
-                    }
-                ) {
-                    Text("Delete", color = Color.Red, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteChatDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-}
-
-// ✅ Date Separator Component
-@Composable
-private fun DateSeparator(label: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = Color(0xFFE3F2FD)
-        ) {
-            Text(
-                text = label,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF1976D2)
-            )
         }
     }
 }
 
-// ✅ Enhanced Message Bubble with Long Press Actions
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
     isMine: Boolean,
-    onLongPress: () -> Unit,
-    onCopy: () -> Unit
+    showReadReceipt: Boolean,
+    isRead: Boolean
 ) {
-    var showMenu by remember { mutableStateOf(false) }
-
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
+        horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
     ) {
-        Box {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
+        ) {
             Surface(
-                modifier = Modifier
-                    .widthIn(max = 280.dp)
-                    .combinedClickable(
-                        onClick = { },
-                        onLongClick = { showMenu = true }
-                    ),
+                modifier = Modifier.widthIn(max = 280.dp),
                 shape = RoundedCornerShape(
                     topStart = 20.dp,
                     topEnd = 20.dp,
@@ -484,128 +434,87 @@ private fun MessageBubble(
                         Modifier
                     }
                 ) {
-                    Column(
+                    Text(
+                        text = message.text,
                         modifier = Modifier.padding(
                             horizontal = 16.dp,
                             vertical = 12.dp
-                        )
-                    ) {
-                        Text(
-                            text = message.text,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (isMine)
-                                Color.White
-                            else
-                                Color(0xFF1a1a1a),
-                            lineHeight = 20.sp,
-                            fontSize = 15.sp
-                        )
-
-                        // ✅ Timestamp
-                        Spacer(Modifier.height(4.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = formatTime(message.timestamp),
-                                fontSize = 11.sp,
-                                color = if (isMine)
-                                    Color.White.copy(alpha = 0.7f)
-                                else
-                                    Color(0xFF666666)
-                            )
-
-                            // ✅ Delivery Status (for sent messages)
-                            if (isMine) {
-                                Spacer(Modifier.width(4.dp))
-                                Icon(
-                                    imageVector = if (message.read) Icons.Default.Done else Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = if (message.read)
-                                        Color(0xFF4CAF50)
-                                    else
-                                        Color.White.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ✅ Context Menu
-            DropdownMenu(
-                expanded = showMenu,
-                onDismissRequest = { showMenu = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Copy") },
-                    onClick = {
-                        onCopy()
-                        showMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.ContentCopy, contentDescription = null)
-                    }
-                )
-
-                if (isMine) {
-                    DropdownMenuItem(
-                        text = { Text("Delete", color = Color.Red) },
-                        onClick = {
-                            onLongPress()
-                            showMenu = false
-                        },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = null,
-                                tint = Color.Red
-                            )
-                        }
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isMine)
+                            Color.White
+                        else
+                            Color(0xFF1a1a1a),
+                        lineHeight = 20.sp,
+                        fontSize = 15.sp
                     )
                 }
             }
         }
-    }
-}
 
-// ✅ Utility Functions
+        // Timestamp + Read Receipt
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = formatMessageTime(message.timestamp.toDate().time),
+                fontSize = 11.sp,
+                color = Color(0xFF999999)
+            )
 
-private fun formatTime(timestamp: Long): String {
-    val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
-    return sdf.format(Date(timestamp))
-}
-
-private fun getDateLabel(timestamp: Long): String {
-    val messageDate = Calendar.getInstance().apply {
-        timeInMillis = timestamp
-    }
-
-    val today = Calendar.getInstance()
-    val yesterday = Calendar.getInstance().apply {
-        add(Calendar.DAY_OF_YEAR, -1)
-    }
-
-    return when {
-        isSameDay(messageDate, today) -> "Today"
-        isSameDay(messageDate, yesterday) -> "Yesterday"
-        else -> {
-            val sdf = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
-            sdf.format(Date(timestamp))
+            if (showReadReceipt) {
+                Icon(
+                    imageVector = if (isRead) Icons.Default.DoneAll else Icons.Default.Done,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = if (isRead) Color(0xFF42A5F5) else Color(0xFF999999)
+                )
+            }
         }
     }
 }
 
-private fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {
-    return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
-            cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
+@Composable
+private fun SystemMessageBubble(message: ChatMessage) {
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFFE3F2FD).copy(alpha = 0.5f)
+        ) {
+            Text(
+                text = message.text,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                fontSize = 13.sp,
+                color = Color(0xFF666666),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+    }
 }
 
-private fun copyToClipboard(context: Context, text: String) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    val clip = ClipData.newPlainText("message", text)
-    clipboard.setPrimaryClip(clip)
+private fun formatMessageTime(timestamp: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - timestamp
+
+    return when {
+        diff < 60_000 -> "Just now"
+        diff < 3600_000 -> "${diff / 60_000}m"
+        diff < 86400_000 -> {
+            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+            sdf.format(Date(timestamp))
+        }
+        diff < 604800_000 -> {
+            val sdf = SimpleDateFormat("EEE HH:mm", Locale.getDefault())
+            sdf.format(Date(timestamp))
+        }
+        else -> {
+            val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
+            sdf.format(Date(timestamp))
+        }
+    }
 }

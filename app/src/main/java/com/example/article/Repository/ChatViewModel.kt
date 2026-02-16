@@ -1,173 +1,194 @@
-package com.example.article
+package com.example.article.chat
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.article.Repository.ChatRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
-    val isSending: Boolean = false,
-    val isDeleting: Boolean = false  // ✅ NEW: Delete loading state
+    val typingUsers: List<String> = emptyList(),
+    val otherUserName: String = "",
+    val otherUserPhoto: String = ""
 )
 
 class ChatViewModel : ViewModel() {
 
-    private val _uiState = MutableStateFlow(ChatUiState())
-    val uiState: StateFlow<ChatUiState> = _uiState
-
-    private var currentChatId: String? = null
-
-    companion object {
-        private const val TAG = "ChatViewModel"
+    private companion object {
+        const val TAG = "ChatViewModel"
+        const val TYPING_TIMEOUT_MS = 3000L
     }
 
-    /**
-     * Start observing messages for a chat
-     */
-    fun observeMessages(chatId: String) {
-        if (currentChatId == chatId) {
-            Log.d(TAG, "Already observing chat: $chatId")
-            return
+    private val _uiState = MutableStateFlow(ChatUiState())
+    val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
+
+    private var messageListener: Job? = null
+    private var typingJob: Job? = null
+    private var currentChatId: String? = null
+    private var currentUserId: String? = null
+
+    // ==================== OBSERVE MESSAGES ====================
+
+    fun observeMessages(
+        chatId: String,
+        currentUserId: String,
+        otherUserName: String,
+        otherUserPhoto: String
+    ) {
+        this.currentChatId = chatId
+        this.currentUserId = currentUserId
+
+        _uiState.value = _uiState.value.copy(
+            isLoading = true,
+            otherUserName = otherUserName,
+            otherUserPhoto = otherUserPhoto
+        )
+
+        messageListener?.cancel()
+        messageListener = viewModelScope.launch {
+            ChatRepository.observeMessages(chatId).collect { messages ->
+                _uiState.value = _uiState.value.copy(
+                    messages = messages,
+                    isLoading = false
+                )
+
+                // Mark unread messages as read
+                markUnreadMessagesAsRead(chatId, currentUserId, messages)
+            }
         }
 
-        currentChatId = chatId
-        _uiState.update { it.copy(isLoading = true, error = null) }
+        // Observe chat metadata for typing indicators
+        observeChatMetadata(chatId, currentUserId)
+    }
 
+    private fun observeChatMetadata(chatId: String, currentUserId: String) {
         viewModelScope.launch {
             try {
-                ChatRepository.observeMessages(chatId).collect { messages ->
-                    _uiState.update {
-                        it.copy(
-                            messages = messages,
-                            isLoading = false,
-                            error = null
-                        )
+                com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                    .collection("chats")
+                    .document(chatId)
+                    .addSnapshotListener { snapshot, error ->
+                        if (error != null || snapshot == null) return@addSnapshotListener
+
+                        val typingUsers = (snapshot.get("typingUsers") as? List<*>)
+                            ?.mapNotNull { it as? String }
+                            ?.filter { it != currentUserId } // Exclude current user
+                            ?: emptyList()
+
+                        _uiState.value = _uiState.value.copy(typingUsers = typingUsers)
                     }
-                    Log.d(TAG, "Received ${messages.size} messages for chat $chatId")
-                }
             } catch (e: Exception) {
-                Log.e(TAG, "Error observing messages", e)
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = e.message ?: "Failed to load messages"
-                    )
-                }
+                Log.e(TAG, "Error observing chat metadata", e)
             }
         }
     }
 
-    /**
-     * Send a message to the current chat
-     */
+    // ==================== SEND MESSAGE ====================
+
     fun sendMessage(
         chatId: String,
+        currentUserId: String,
+        currentUserName: String,
+        currentUserPhoto: String,
         text: String,
-        senderId: String
+        recipientId: String
     ) {
-        if (text.isBlank()) {
-            Log.w(TAG, "Attempted to send blank message")
-            return
-        }
+        if (text.isBlank()) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isSending = true) }
+            // Stop typing indicator
+            setTyping(chatId, currentUserId, false)
 
-            try {
-                val result = ChatRepository.sendMessage(
-                    chatId = chatId,
-                    text = text.trim(),
-                    senderId = senderId
-                )
+            val result = ChatRepository.sendMessage(
+                chatId = chatId,
+                senderId = currentUserId,
+                senderName = currentUserName,
+                senderPhotoUrl = currentUserPhoto,
+                text = text,
+                recipientId = recipientId
+            )
 
-                result.fold(
-                    onSuccess = { messageId ->
-                        Log.d(TAG, "Message sent successfully: $messageId")
-                        _uiState.update { it.copy(isSending = false) }
-                    },
-                    onFailure = { error ->
-                        Log.e(TAG, "Failed to send message", error)
-                        _uiState.update {
-                            it.copy(
-                                isSending = false,
-                                error = "Failed to send message: ${error.message}"
-                            )
-                        }
-                    }
+            if (result.isFailure) {
+                _uiState.value = _uiState.value.copy(
+                    error = "Failed to send message"
                 )
-            } catch (e: Exception) {
-                Log.e(TAG, "Exception while sending message", e)
-                _uiState.update {
-                    it.copy(
-                        isSending = false,
-                        error = "Failed to send message: ${e.message}"
-                    )
-                }
             }
         }
     }
 
-    /**
-     * ✅ NEW: Delete a message
-     */
-    fun deleteMessage(
+    // ==================== TYPING INDICATOR ====================
+
+    fun onTyping(chatId: String, userId: String) {
+        typingJob?.cancel()
+
+        viewModelScope.launch {
+            // Set typing to true
+            setTyping(chatId, userId, true)
+
+            // Auto-cancel after timeout
+            typingJob = launch {
+                delay(TYPING_TIMEOUT_MS)
+                setTyping(chatId, userId, false)
+            }
+        }
+    }
+
+    fun onStopTyping(chatId: String, userId: String) {
+        typingJob?.cancel()
+        viewModelScope.launch {
+            setTyping(chatId, userId, false)
+        }
+    }
+
+    private suspend fun setTyping(chatId: String, userId: String, isTyping: Boolean) {
+        ChatRepository.setTyping(chatId, userId, isTyping)
+    }
+
+    // ==================== MARK AS READ ====================
+
+    private fun markUnreadMessagesAsRead(
         chatId: String,
-        messageId: String,
-        userId: String
+        userId: String,
+        messages: List<ChatMessage>
     ) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isDeleting = true) }
+            val unreadMessageIds = messages
+                .filter { !it.isReadBy(userId) && it.senderId != userId }
+                .map { it.id }
 
-            try {
-                val result = ChatRepository.deleteMessage(
-                    chatId = chatId,
-                    messageId = messageId,
-                    userId = userId
-                )
-
-                result.fold(
-                    onSuccess = {
-                        Log.d(TAG, "✅ Message deleted successfully")
-                        _uiState.update { it.copy(isDeleting = false) }
-                    },
-                    onFailure = { error ->
-                        Log.e(TAG, "❌ Failed to delete message", error)
-                        _uiState.update {
-                            it.copy(
-                                isDeleting = false,
-                                error = error.message ?: "Failed to delete message"
-                            )
-                        }
-                    }
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Exception while deleting message", e)
-                _uiState.update {
-                    it.copy(
-                        isDeleting = false,
-                        error = "Failed to delete message: ${e.message}"
-                    )
-                }
+            if (unreadMessageIds.isNotEmpty()) {
+                ChatRepository.markMessagesAsRead(chatId, userId, unreadMessageIds)
             }
         }
     }
 
-    /**
-     * Clear error message
-     */
+    // ==================== CLEAR ERROR ====================
+
     fun clearError() {
-        _uiState.update { it.copy(error = null) }
+        _uiState.value = _uiState.value.copy(error = null)
     }
+
+    // ==================== CLEANUP ====================
 
     override fun onCleared() {
         super.onCleared()
-        Log.d(TAG, "ChatViewModel cleared")
+        messageListener?.cancel()
+        typingJob?.cancel()
+
+        // Clean up typing indicator on exit
+        currentChatId?.let { chatId ->
+            currentUserId?.let { userId ->
+                viewModelScope.launch {
+                    setTyping(chatId, userId, false)
+                }
+            }
+        }
     }
 }

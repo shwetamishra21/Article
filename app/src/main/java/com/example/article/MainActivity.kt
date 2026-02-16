@@ -19,9 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.example.article.admin.AdminBottomBar
 import com.example.article.admin.AdminDashboardScreen
 import com.example.article.admin.AnnouncementManagementScreen
@@ -32,7 +34,7 @@ import com.example.article.provider.ProviderBottomBar
 import com.example.article.provider.ProviderInboxScreen
 import com.example.article.provider.ProviderProfileScreen
 import com.example.article.provider.ProviderRequestsScreen
-import com.example.article.ChatScreen
+import com.example.article.chat.EnhancedChatScreen
 import com.example.article.ui.screens.LoginScreen
 import com.example.article.ui.theme.ArticleTheme
 import com.google.firebase.FirebaseApp
@@ -192,14 +194,25 @@ private fun ProviderApp(
                 )
             }
 
-            composable("chat/{chatId}/{title}") { backStack ->
-                val chatId = backStack.arguments?.getString("chatId") ?: return@composable
-                val title = backStack.arguments?.getString("title") ?: "Chat"
-
-                ChatScreen(
+            // Enhanced Chat Screen
+            composable(
+                route = "chat/{chatId}/{otherUserId}/{otherUserName}/{otherUserPhoto}",
+                arguments = listOf(
+                    navArgument("chatId") { type = NavType.StringType },
+                    navArgument("otherUserId") { type = NavType.StringType },
+                    navArgument("otherUserName") { type = NavType.StringType },
+                    navArgument("otherUserPhoto") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    }
+                )
+            ) { backStackEntry ->
+                EnhancedChatScreen(
                     navController = navController,
-                    chatId = chatId,
-                    title = title
+                    chatId = backStackEntry.arguments?.getString("chatId") ?: "",
+                    otherUserId = backStackEntry.arguments?.getString("otherUserId") ?: "",
+                    otherUserName = backStackEntry.arguments?.getString("otherUserName") ?: "",
+                    otherUserPhoto = backStackEntry.arguments?.getString("otherUserPhoto") ?: ""
                 )
             }
 
@@ -310,14 +323,25 @@ private fun MemberApp(
                 )
             }
 
-            composable("chat/{chatId}/{title}") { backStack ->
-                val chatId = backStack.arguments?.getString("chatId") ?: return@composable
-                val title = backStack.arguments?.getString("title") ?: "Chat"
-
-                ChatScreen(
+            // Enhanced Chat Screen
+            composable(
+                route = "chat/{chatId}/{otherUserId}/{otherUserName}/{otherUserPhoto}",
+                arguments = listOf(
+                    navArgument("chatId") { type = NavType.StringType },
+                    navArgument("otherUserId") { type = NavType.StringType },
+                    navArgument("otherUserName") { type = NavType.StringType },
+                    navArgument("otherUserPhoto") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    }
+                )
+            ) { backStackEntry ->
+                EnhancedChatScreen(
                     navController = navController,
-                    chatId = chatId,
-                    title = title
+                    chatId = backStackEntry.arguments?.getString("chatId") ?: "",
+                    otherUserId = backStackEntry.arguments?.getString("otherUserId") ?: "",
+                    otherUserName = backStackEntry.arguments?.getString("otherUserName") ?: "",
+                    otherUserPhoto = backStackEntry.arguments?.getString("otherUserPhoto") ?: ""
                 )
             }
 
@@ -424,14 +448,25 @@ private fun AdminApp(
                 )
             }
 
-            composable("chat/{chatId}/{title}") { backStack ->
-                val chatId = backStack.arguments?.getString("chatId") ?: return@composable
-                val title = backStack.arguments?.getString("title") ?: "Chat"
-
-                ChatScreen(
+            // Enhanced Chat Screen
+            composable(
+                route = "chat/{chatId}/{otherUserId}/{otherUserName}/{otherUserPhoto}",
+                arguments = listOf(
+                    navArgument("chatId") { type = NavType.StringType },
+                    navArgument("otherUserId") { type = NavType.StringType },
+                    navArgument("otherUserName") { type = NavType.StringType },
+                    navArgument("otherUserPhoto") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    }
+                )
+            ) { backStackEntry ->
+                EnhancedChatScreen(
                     navController = navController,
-                    chatId = chatId,
-                    title = title
+                    chatId = backStackEntry.arguments?.getString("chatId") ?: "",
+                    otherUserId = backStackEntry.arguments?.getString("otherUserId") ?: "",
+                    otherUserName = backStackEntry.arguments?.getString("otherUserName") ?: "",
+                    otherUserPhoto = backStackEntry.arguments?.getString("otherUserPhoto") ?: ""
                 )
             }
 
