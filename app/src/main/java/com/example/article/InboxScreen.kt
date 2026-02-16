@@ -8,9 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,16 +16,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.article.Repository.ChatRepository
 import com.example.article.Repository.InboxViewModel
 import com.example.article.core.UiState
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import java.util.UUID
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import java.text.SimpleDateFormat
+import java.util.*
+
+data class SimpleUser(
+    val uid: String,
+    val name: String,
+    val photoUrl: String = "",
+    val role: String = "member"
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,15 +47,19 @@ fun InboxScreen(
     onCreateRequest: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableStateOf(0) }
-    var showMemberDialog by remember { mutableStateOf(false) }
+    var showUserPickerDialog by remember { mutableStateOf(false) }
+    var chatToDelete by remember { mutableStateOf<ChatThread?>(null) }
 
     val viewModel: InboxViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
+    val scope = rememberCoroutineScope()
 
     val userId = FirebaseAuth.getInstance().currentUser?.uid
 
     LaunchedEffect(userId) {
-        userId?.let { viewModel.loadInbox(it) }
+        userId?.let {
+            viewModel.loadInbox(it)
+        }
     }
 
     Scaffold(
@@ -62,10 +77,9 @@ fun InboxScreen(
             )
         },
         floatingActionButton = {
-            // ✨ FAB to start new conversation (Members tab only)
             if (selectedTab == 1) {
                 FloatingActionButton(
-                    onClick = { showMemberDialog = true },
+                    onClick = { showUserPickerDialog = true },
                     shape = RoundedCornerShape(16.dp),
                     containerColor = MaterialTheme.colorScheme.primary
                 ) {
@@ -91,7 +105,6 @@ fun InboxScreen(
                     )
                 )
         ) {
-            // ✨ PREMIUM GLOWING TABS
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -122,7 +135,6 @@ fun InboxScreen(
                 }
             }
 
-            // Content
             when (val state = uiState) {
                 UiState.Loading -> {
                     Box(
@@ -152,12 +164,14 @@ fun InboxScreen(
                         EmptyInboxState(
                             isService = selectedTab == 0,
                             onCreateRequest = onCreateRequest,
-                            onStartMemberChat = { showMemberDialog = true }
+                            onStartMemberChat = { showUserPickerDialog = true }
                         )
                     } else {
                         InboxList(
                             chats = filteredChats,
-                            navController = navController
+                            navController = navController,
+                            currentUserId = userId ?: "",
+                            onDeleteChat = { chatToDelete = it }
                         )
                     }
                 }
@@ -183,6 +197,12 @@ fun InboxScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Button(
+                                onClick = { userId?.let { viewModel.loadInbox(it) } },
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Retry")
+                            }
                         }
                     }
                 }
@@ -191,30 +211,56 @@ fun InboxScreen(
             }
         }
 
-        // ✨ DIALOG TO CREATE MEMBER CHAT
-        if (showMemberDialog) {
-            StartMemberChatDialog(
-                onDismiss = { showMemberDialog = false },
-                onStart = { memberName ->
-                    // Create chat and navigate
-                    val chatId = UUID.randomUUID().toString()
-                    val firestore = FirebaseFirestore.getInstance()
-
-                    try {
-                        firestore.collection("chats").document(chatId).set(
-                            mapOf(
-                                "id" to chatId,
-                                "title" to memberName,
-                                "type" to "member",
-                                "lastMessage" to "",
-                                "createdAt" to System.currentTimeMillis()
+        if (showUserPickerDialog) {
+            UserPickerDialog(
+                onDismiss = { showUserPickerDialog = false },
+                onUserSelected = { selectedUser ->
+                    scope.launch {
+                        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+                        if (currentUserId != null) {
+                            val result = ChatRepository.getOrCreateChat(
+                                currentUserId = currentUserId,
+                                otherUserId = selectedUser.uid,
+                                otherUserName = selectedUser.name,
+                                type = "member"
                             )
-                        )
 
-                        showMemberDialog = false
-                        navController.navigate("chat/$chatId/$memberName")
-                    } catch (e: Exception) {
-                        // Handle error
+                            result.fold(
+                                onSuccess = { chatId ->
+                                    showUserPickerDialog = false
+                                    navController.navigate("chat/$chatId/${selectedUser.name}")
+                                },
+                                onFailure = { }
+                            )
+                        }
+                    }
+                }
+            )
+        }
+
+        if (chatToDelete != null) {
+            AlertDialog(
+                onDismissRequest = { chatToDelete = null },
+                title = { Text("Delete Conversation") },
+                text = { Text("Are you sure you want to delete this conversation with ${chatToDelete?.title}?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+                                if (currentUserId != null) {
+                                    ChatRepository.deleteChat(chatToDelete!!.id, currentUserId)
+                                }
+                                chatToDelete = null
+                            }
+                        }
+                    ) {
+                        Text("Delete", color = Color.Red, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { chatToDelete = null }) {
+                        Text("Cancel")
                     }
                 }
             )
@@ -222,13 +268,15 @@ fun InboxScreen(
     }
 }
 
-/* ---------- CONVERSATION LIST ---------- */
-
 @Composable
 private fun InboxList(
     chats: List<ChatThread>,
-    navController: NavController
+    navController: NavController,
+    currentUserId: String,
+    onDeleteChat: (ChatThread) -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+
     LazyColumn(
         contentPadding = PaddingValues(
             start = 16.dp,
@@ -236,7 +284,7 @@ private fun InboxList(
             top = 8.dp,
             bottom = 100.dp
         ),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(
             items = chats,
@@ -245,20 +293,26 @@ private fun InboxList(
             ConversationCard(
                 chat = chat,
                 onClick = {
+                    scope.launch {
+                        ChatRepository.markChatAsRead(chat.id, currentUserId)
+                    }
                     navController.navigate("chat/${chat.id}/${chat.title}")
-                }
+                },
+                onDelete = { onDeleteChat(chat) }
             )
         }
     }
 }
 
-/* ---------- PREMIUM CONVERSATION CARD ---------- */
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConversationCard(
     chat: ChatThread,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDelete: () -> Unit
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -277,10 +331,10 @@ private fun ConversationCard(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // ✨ Avatar with Gradient
+            // Avatar
             Box(
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(56.dp)
                     .clip(CircleShape)
                     .background(
                         Brush.linearGradient(
@@ -296,35 +350,147 @@ private fun ConversationCard(
                     text = chat.title.firstOrNull()?.uppercase() ?: "?",
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
+                    fontSize = 20.sp
                 )
             }
 
             // Content
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(
-                    text = chat.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = chat.lastMessage,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    fontSize = 13.sp
-                )
+                // ✅ Name + Time Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = chat.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if (chat.unreadCount > 0) FontWeight.Bold else FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(Modifier.width(8.dp))
+
+                    // ✅ Time ago
+                    Text(
+                        text = formatTimeAgo(chat.lastMessageAt),
+                        fontSize = 13.sp,
+                        color = if (chat.unreadCount > 0)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (chat.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                }
+
+                // ✅ Last Message + Unread Badge Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = chat.lastMessage.ifEmpty { "No messages yet" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (chat.unreadCount > 0)
+                            MaterialTheme.colorScheme.onSurface
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (chat.unreadCount > 0) FontWeight.Medium else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontSize = 14.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    // ✅ Unread Badge
+                    if (chat.unreadCount > 0) {
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .padding(2.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (chat.unreadCount > 99) "99+" else chat.unreadCount.toString(),
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ✅ 3-dot Menu
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription = "More",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Delete", color = Color.Red) },
+                        onClick = {
+                            onDelete()
+                            showMenu = false
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = null,
+                                tint = Color.Red
+                            )
+                        }
+                    )
+                }
             }
         }
     }
 }
 
-/* ---------- PREMIUM GLOWING TAB ---------- */
+// ✅ Format time ago (like WhatsApp)
+private fun formatTimeAgo(timestamp: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - timestamp
+
+    return when {
+        diff < 60_000 -> "now" // Less than 1 minute
+        diff < 3600_000 -> "${diff / 60_000}m" // Minutes
+        diff < 86400_000 -> "${diff / 3600_000}h" // Hours
+        diff < 172800_000 -> "Yesterday" // Yesterday
+        diff < 604800_000 -> {
+            // This week - show day name
+            val sdf = SimpleDateFormat("EEE", Locale.getDefault())
+            sdf.format(Date(timestamp))
+        }
+        else -> {
+            // Older - show date
+            val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
+            sdf.format(Date(timestamp))
+        }
+    }
+}
 
 @Composable
 private fun InboxTab(
@@ -391,8 +557,6 @@ private fun InboxTab(
     }
 }
 
-/* ---------- EMPTY STATE ---------- */
-
 @Composable
 private fun EmptyInboxState(
     isService: Boolean,
@@ -409,7 +573,6 @@ private fun EmptyInboxState(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Empty Icon
             Box(
                 modifier = Modifier
                     .size(80.dp)
@@ -467,14 +630,21 @@ private fun EmptyInboxState(
     }
 }
 
-/* ---------- DIALOG TO START MEMBER CHAT ---------- */
-
 @Composable
-private fun StartMemberChatDialog(
+private fun UserPickerDialog(
     onDismiss: () -> Unit,
-    onStart: (String) -> Unit
+    onUserSelected: (SimpleUser) -> Unit
 ) {
-    var memberName by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf("") }
+    var users by remember { mutableStateOf<List<SimpleUser>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+
+    LaunchedEffect(Unit) {
+        isLoading = true
+        users = loadAllUsers(currentUserId)
+        isLoading = false
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -485,36 +655,69 @@ private fun StartMemberChatDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Enter the name of the member you want to chat with:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.heightIn(max = 400.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Search users...") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = null)
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
                 )
 
-                OutlinedTextField(
-                    value = memberName,
-                    onValueChange = { memberName = it },
-                    label = { Text("Member Name") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (memberName.isNotBlank()) {
-                        onStart(memberName.trim())
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
                     }
-                },
-                enabled = memberName.isNotBlank(),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text("Start Chat", fontWeight = FontWeight.SemiBold)
+                } else {
+                    val filteredUsers = if (searchQuery.isBlank()) {
+                        users
+                    } else {
+                        users.filter {
+                            it.name.contains(searchQuery, ignoreCase = true)
+                        }
+                    }
+
+                    if (filteredUsers.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (searchQuery.isBlank()) "No users found" else "No matching users",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.heightIn(max = 300.dp)
+                        ) {
+                            items(filteredUsers) { user ->
+                                UserPickerItem(
+                                    user = user,
+                                    onClick = { onUserSelected(user) }
+                                )
+                            }
+                        }
+                    }
+                }
             }
         },
+        confirmButton = {},
         dismissButton = {
             TextButton(
                 onClick = onDismiss,
@@ -525,4 +728,86 @@ private fun StartMemberChatDialog(
         },
         shape = RoundedCornerShape(16.dp)
     )
+}
+
+@Composable
+private fun UserPickerItem(
+    user: SimpleUser,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = user.name.firstOrNull()?.uppercase() ?: "?",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = user.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = when (user.role) {
+                        "service_provider" -> "Service Provider"
+                        "admin" -> "Admin"
+                        else -> "Member"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+private suspend fun loadAllUsers(currentUserId: String?): List<SimpleUser> {
+    return try {
+        val firestore = FirebaseFirestore.getInstance()
+        val snapshot = firestore.collection("users")
+            .get()
+            .await()
+
+        snapshot.documents.mapNotNull { doc ->
+            if (doc.id == currentUserId) return@mapNotNull null
+
+            SimpleUser(
+                uid = doc.id,
+                name = doc.getString("name") ?: "Unknown User",
+                photoUrl = doc.getString("photoUrl") ?: "",
+                role = doc.getString("role") ?: "member"
+            )
+        }.sortedBy { it.name }
+
+    } catch (e: Exception) {
+        emptyList()
+    }
 }

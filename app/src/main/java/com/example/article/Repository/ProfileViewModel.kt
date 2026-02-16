@@ -7,7 +7,6 @@ import com.example.article.FeedItem
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import android.util.Log
-import com.google.firebase.Timestamp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import android.content.Context
@@ -385,6 +384,31 @@ class ProfileViewModel : ViewModel() {
                 Log.e(TAG, "Error loading user profile", e)
                 _uiState.value = ProfileUiState.Error(e.message ?: "Failed to load profile")
             }
+        }
+    }
+
+    /* ==================== GET USER INFO (Helper for Chat) ==================== */
+
+    /**
+     * Quick helper to get basic user info for chat creation
+     * Returns: Pair(userId, userName)
+     */
+    suspend fun getUserInfo(userId: String): Pair<String, String>? {
+        return try {
+            val doc = firestore.collection("users")
+                .document(userId)
+                .get()
+                .await()
+
+            if (doc.exists()) {
+                val name = doc.getString("name") ?: "User"
+                Pair(userId, name)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting user info", e)
+            null
         }
     }
 }

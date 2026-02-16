@@ -1,87 +1,173 @@
 package com.example.article
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.firestore.Query
+import androidx.lifecycle.viewModelScope
+import com.example.article.Repository.ChatRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+data class ChatUiState(
+    val messages: List<ChatMessage> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null,
+    val isSending: Boolean = false,
+    val isDeleting: Boolean = false  // ✅ NEW: Delete loading state
+)
 
 class ChatViewModel : ViewModel() {
-
-    private val firestore = FirebaseFirestore.getInstance()
-    private var listener: ListenerRegistration? = null
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState
 
+    private var currentChatId: String? = null
+
+    companion object {
+        private const val TAG = "ChatViewModel"
+    }
+
+    /**
+     * Start observing messages for a chat
+     */
     fun observeMessages(chatId: String) {
-        listener?.remove()
+        if (currentChatId == chatId) {
+            Log.d(TAG, "Already observing chat: $chatId")
+            return
+        }
 
-        _uiState.update { it.copy(isLoading = true) }
+        currentChatId = chatId
+        _uiState.update { it.copy(isLoading = true, error = null) }
 
-        listener = firestore
-            .collection("chats")
-            .document(chatId)
-            .collection("messages")
-            .orderBy("timestamp", Query.Direction.ASCENDING)
-            .addSnapshotListener { snapshot, error ->
-
-                if (error != null) {
+        viewModelScope.launch {
+            try {
+                ChatRepository.observeMessages(chatId).collect { messages ->
                     _uiState.update {
                         it.copy(
+                            messages = messages,
                             isLoading = false,
-                            error = error.message
+                            error = null
                         )
                     }
-                    return@addSnapshotListener
+                    Log.d(TAG, "Received ${messages.size} messages for chat $chatId")
                 }
-
-                val messages: List<ChatMessage> =
-                    snapshot?.documents
-                        ?.mapNotNull { doc ->
-                            doc.toObject(ChatMessage::class.java)
-                                ?.copy(id = doc.id)
-                        }
-                        ?: emptyList()
-
+            } catch (e: Exception) {
+                Log.e(TAG, "Error observing messages", e)
                 _uiState.update {
                     it.copy(
-                        messages = messages,
-                        isLoading = false
+                        isLoading = false,
+                        error = e.message ?: "Failed to load messages"
                     )
                 }
             }
+        }
     }
 
+    /**
+     * Send a message to the current chat
+     */
     fun sendMessage(
         chatId: String,
         text: String,
         senderId: String
     ) {
-        if (text.isBlank()) return
+        if (text.isBlank()) {
+            Log.w(TAG, "Attempted to send blank message")
+            return
+        }
 
-        val data = hashMapOf(
-            "text" to text,
-            "senderId" to senderId,
-            "timestamp" to System.currentTimeMillis()
-        )
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSending = true) }
 
-        firestore
-            .collection("chats")
-            .document(chatId)
-            .collection("messages")
-            .add(data)
+            try {
+                val result = ChatRepository.sendMessage(
+                    chatId = chatId,
+                    text = text.trim(),
+                    senderId = senderId
+                )
+
+                result.fold(
+                    onSuccess = { messageId ->
+                        Log.d(TAG, "Message sent successfully: $messageId")
+                        _uiState.update { it.copy(isSending = false) }
+                    },
+                    onFailure = { error ->
+                        Log.e(TAG, "Failed to send message", error)
+                        _uiState.update {
+                            it.copy(
+                                isSending = false,
+                                error = "Failed to send message: ${error.message}"
+                            )
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception while sending message", e)
+                _uiState.update {
+                    it.copy(
+                        isSending = false,
+                        error = "Failed to send message: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * ✅ NEW: Delete a message
+     */
+    fun deleteMessage(
+        chatId: String,
+        messageId: String,
+        userId: String
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isDeleting = true) }
+
+            try {
+                val result = ChatRepository.deleteMessage(
+                    chatId = chatId,
+                    messageId = messageId,
+                    userId = userId
+                )
+
+                result.fold(
+                    onSuccess = {
+                        Log.d(TAG, "✅ Message deleted successfully")
+                        _uiState.update { it.copy(isDeleting = false) }
+                    },
+                    onFailure = { error ->
+                        Log.e(TAG, "❌ Failed to delete message", error)
+                        _uiState.update {
+                            it.copy(
+                                isDeleting = false,
+                                error = error.message ?: "Failed to delete message"
+                            )
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception while deleting message", e)
+                _uiState.update {
+                    it.copy(
+                        isDeleting = false,
+                        error = "Failed to delete message: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Clear error message
+     */
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
     }
 
     override fun onCleared() {
         super.onCleared()
-        listener?.remove()
+        Log.d(TAG, "ChatViewModel cleared")
     }
 }
-data class ChatUiState(
-    val messages: List<ChatMessage> = emptyList(),
-    val isLoading: Boolean = false,
-    val error: String? = null
-)
