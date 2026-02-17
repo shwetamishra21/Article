@@ -47,6 +47,8 @@ class InboxViewModel : ViewModel() {
         otherUserName: String,
         currentUserPhoto: String = "",
         otherUserPhoto: String = "",
+        currentUserRole: String = "member",
+        otherUserRole: String = "member",
         type: String = ChatThread.TYPE_MEMBER,
         serviceRequestId: String? = null
     ): Result<String> {
@@ -57,6 +59,8 @@ class InboxViewModel : ViewModel() {
             user2Name = otherUserName,
             user1Photo = currentUserPhoto,
             user2Photo = otherUserPhoto,
+            user1Role = currentUserRole,
+            user2Role = otherUserRole,
             type = type,
             serviceRequestId = serviceRequestId
         )

@@ -5,10 +5,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.article.UserSessionManager
 import com.google.firebase.Timestamp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.util.Date
 
 class MemberRequestViewModel(
@@ -24,26 +27,26 @@ class MemberRequestViewModel(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val _submitSuccess = MutableStateFlow(false)
+    val submitSuccess: StateFlow<Boolean> = _submitSuccess.asStateFlow()
+
     companion object {
         private const val TAG = "MemberRequestVM"
     }
 
     /**
-     * Load all requests created by this member
+     * Start a real-time stream of this member's requests.
      */
     fun loadMemberRequests(memberId: String) {
         viewModelScope.launch {
+            _loading.value = true
             try {
-                _loading.value = true
-                _error.value = null
-
-                repository.getMemberRequests(memberId).collect { requestList ->
-                    _requests.value = requestList
+                repository.getMemberRequests(memberId).collect { list ->
+                    _requests.value = list
                     _loading.value = false
-                    Log.d(TAG, "Loaded ${requestList.size} member requests")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error loading member requests", e)
+                Log.e(TAG, "loadMemberRequests error", e)
                 _error.value = e.message ?: "Failed to load requests"
                 _loading.value = false
             }
@@ -51,7 +54,8 @@ class MemberRequestViewModel(
     }
 
     /**
-     * Create a new service request
+     * Create a new service request.
+     * Pulls member info from UserSessionManager automatically.
      */
     fun createRequest(
         title: String,
@@ -61,78 +65,113 @@ class MemberRequestViewModel(
         onSuccess: () -> Unit
     ) {
         viewModelScope.launch {
-            try {
-                _loading.value = true
-                _error.value = null
+            _loading.value = true
+            _error.value = null
 
-                val currentUser = UserSessionManager.currentUser.value
-                if (currentUser == null) {
-                    _error.value = "Not logged in"
-                    _loading.value = false
-                    return@launch
-                }
-
-                val request = ServiceRequest(
-                    title = title,
-                    description = description,
-                    serviceType = serviceType,
-                    memberId = currentUser.uid,  // ✅ CORRECT                    memberName = currentUser.name,
-                    memberNeighborhood = currentUser.neighbourhood ?: "Unknown",
-                    preferredDate = preferredDate?.let { Timestamp(it) },
-                    status = ServiceRequest.STATUS_PENDING
-                )
-
-                val result = repository.createRequest(request)
-
-                if (result.isSuccess) {
-                    Log.d(TAG, "Request created successfully")
-                    _loading.value = false
-                    onSuccess()
-                } else {
-                    _error.value = "Failed to create request"
-                    _loading.value = false
-                    Log.e(TAG, "Create request failed", result.exceptionOrNull())
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error creating request", e)
-                _error.value = e.message ?: "Failed to create request"
+            // Resolve member identity from FirebaseAuth (uid) + UserSessionManager (name)
+            // and neighbourhood from Firestore — consistent with how every other screen works
+            val firebaseUser = FirebaseAuth.getInstance().currentUser
+            if (firebaseUser == null) {
+                _error.value = "You must be logged in to create a request"
                 _loading.value = false
+                return@launch
+            }
+
+            val memberId = firebaseUser.uid
+            val memberName = UserSessionManager.currentUser.value?.name
+                ?: firebaseUser.displayName
+                ?: "Member"
+
+            // Load neighbourhood from Firestore (non-critical — empty string if missing)
+            val memberNeighborhood = try {
+                FirebaseFirestore.getInstance()
+                    .collection("users")
+                    .document(memberId)
+                    .get()
+                    .await()
+                    .getString("neighborhood") ?: ""
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not load neighborhood", e)
+                ""
+            }
+
+            val request = ServiceRequest(
+                title = title.trim(),
+                description = description.trim(),
+                serviceType = serviceType,
+                memberId = memberId,
+                memberName = memberName,
+                memberNeighborhood = memberNeighborhood,
+                preferredDate = preferredDate?.let { Timestamp(it) },
+                status = ServiceRequest.STATUS_PENDING,
+                createdAt = Timestamp.now(),
+                updatedAt = Timestamp.now()
+            )
+
+            val result = repository.createRequest(request)
+
+            _loading.value = false
+            if (result.isSuccess) {
+                Log.d(TAG, "Request created: ${result.getOrNull()}")
+                _submitSuccess.value = true
+                onSuccess()
+            } else {
+                val msg = result.exceptionOrNull()?.message ?: "Failed to submit request"
+                Log.e(TAG, msg)
+                _error.value = msg
             }
         }
     }
 
     /**
-     * Cancel a pending request
+     * Cancel a request owned by this member.
+     * Allowed for: pending and accepted (but not in_progress or completed).
      */
     fun cancelRequest(requestId: String) {
         viewModelScope.launch {
-            try {
-                val result = repository.declineRequest(requestId, byProvider = false)
+            val memberId = FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
 
-                if (result.isFailure) {
-                    _error.value = "Failed to cancel request"
-                    Log.e(TAG, "Cancel failed", result.exceptionOrNull())
-                } else {
-                    Log.d(TAG, "Request $requestId cancelled successfully")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error cancelling request", e)
-                _error.value = e.message ?: "Failed to cancel request"
+            // Guard client-side — repo also enforces this server-side
+            val request = _requests.value.find { it.id == requestId }
+            if (request != null &&
+                request.status != ServiceRequest.STATUS_PENDING &&
+                request.status != ServiceRequest.STATUS_ACCEPTED
+            ) {
+                _error.value = "Cannot cancel a request that is already ${request.status}"
+                return@launch
+            }
+
+            val result = repository.cancelRequest(requestId, memberId)
+            if (result.isFailure) {
+                _error.value = result.exceptionOrNull()?.message ?: "Failed to cancel request"
+                Log.e(TAG, "cancelRequest error", result.exceptionOrNull())
             }
         }
     }
 
     /**
-     * Set error message
+     * Rate a completed request.
      */
-    fun setError(message: String) {
-        _error.value = message
+    fun rateRequest(requestId: String, rating: Float, review: String) {
+        viewModelScope.launch {
+            val memberId = FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
+            val result = repository.rateRequest(requestId, memberId, rating, review)
+            if (result.isFailure) {
+                _error.value = result.exceptionOrNull()?.message ?: "Failed to submit rating"
+                Log.e(TAG, "rateRequest error", result.exceptionOrNull())
+            }
+        }
     }
 
-    /**
-     * Clear error message
-     */
+    fun setError(msg: String) {
+        _error.value = msg
+    }
+
     fun clearError() {
         _error.value = null
+    }
+
+    fun clearSubmitSuccess() {
+        _submitSuccess.value = false
     }
 }

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.article.chat.ChatHelper
 import com.example.article.chat.ChatRepository
 import com.example.article.chat.ChatThread
 import com.example.article.chat.InboxViewModel
@@ -69,7 +70,7 @@ fun InboxScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Inbox",
+                        text = "Messages",
                         fontWeight = FontWeight.SemiBold
                     )
                 },
@@ -79,18 +80,16 @@ fun InboxScreen(
             )
         },
         floatingActionButton = {
-            if (selectedTab == 1) {
-                FloatingActionButton(
-                    onClick = { showUserPickerDialog = true },
-                    shape = RoundedCornerShape(16.dp),
-                    containerColor = MaterialTheme.colorScheme.primary
-                ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "Start conversation",
-                        tint = MaterialTheme.colorScheme.onPrimary
-                    )
-                }
+            FloatingActionButton(
+                onClick = { showUserPickerDialog = true },
+                shape = RoundedCornerShape(16.dp),
+                containerColor = MaterialTheme.colorScheme.primary
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Start conversation",
+                    tint = MaterialTheme.colorScheme.onPrimary
+                )
             }
         }
     ) { padding ->
@@ -107,6 +106,7 @@ fun InboxScreen(
                     )
                 )
         ) {
+            // Tab Selector
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -189,8 +189,18 @@ fun InboxScreen(
                 else -> {
                     val allChats = currentState.chats
 
-                    val filteredChats = allChats.filter {
-                        if (selectedTab == 0) it.type == "service" else it.type == "member"
+                    // Filter chats based on selected tab and participant roles
+                    val filteredChats = allChats.filter { chat ->
+                        val otherUserId = chat.getOtherUserId(userId ?: "") ?: ""
+                        val otherUserRole = chat.getOtherUserRole(userId ?: "")
+
+                        when (selectedTab) {
+                            // Services tab - show service_provider conversations
+                            0 -> chat.type == "service" || otherUserRole == "service_provider"
+                            // Members tab - show member conversations (exclude service providers)
+                            1 -> chat.type == "member" && otherUserRole != "service_provider"
+                            else -> false
+                        }
                     }
 
                     if (filteredChats.isEmpty()) {
@@ -211,47 +221,37 @@ fun InboxScreen(
             }
         }
 
+        // User Picker Dialog
         if (showUserPickerDialog) {
             UserPickerDialog(
                 onDismiss = { showUserPickerDialog = false },
                 onUserSelected = { selectedUser ->
+                    showUserPickerDialog = false
                     scope.launch {
-                        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
-                        val currentUserName = FirebaseAuth.getInstance().currentUser?.displayName ?: "You"
-                        val currentUserPhoto = FirebaseAuth.getInstance().currentUser?.photoUrl?.toString() ?: ""
-
-                        if (currentUserId != null) {
-                            val result = ChatRepository.getOrCreateChat(
-                                userId1 = currentUserId,
-                                userId2 = selectedUser.uid,
-                                user1Name = currentUserName,
-                                user2Name = selectedUser.name,
-                                user1Photo = currentUserPhoto,
-                                user2Photo = selectedUser.photoUrl,
-                                type = "member"
-                            )
-
-                            result.fold(
-                                onSuccess = { chatId ->
-                                    showUserPickerDialog = false
-                                    // Simple navigation - chat screen will load user data
-                                    navController.navigate(
-                                        "chat/$chatId/${selectedUser.uid}/loading/loading"
-                                    )
-                                },
-                                onFailure = { }
-                            )
-                        }
+                        ChatHelper.startChatWith(
+                            navController = navController,
+                            scope = scope,
+                            otherUserId = selectedUser.uid,
+                            otherUserName = selectedUser.name,
+                            otherUserPhoto = selectedUser.photoUrl,
+                            otherUserRole = selectedUser.role
+                        )
                     }
-                }
+                },
+                filterServiceProviders = selectedTab == 1 // Filter out providers in Members tab
             )
         }
 
+        // Delete Confirmation Dialog
         if (chatToDelete != null) {
             AlertDialog(
                 onDismissRequest = { chatToDelete = null },
                 title = { Text("Delete Conversation") },
-                text = { Text("Are you sure you want to delete this conversation with ${chatToDelete?.title}?") },
+                text = {
+                    Text("Are you sure you want to delete this conversation with ${
+                        chatToDelete?.getOtherUserName(userId ?: "")
+                    }?")
+                },
                 confirmButton = {
                     TextButton(
                         onClick = {
@@ -296,26 +296,20 @@ private fun InboxList(
             items = chats,
             key = { it.id }
         ) { chat ->
-            // Get other user info
-            val otherUserId = chat.participants.firstOrNull { it != currentUserId } ?: ""
-
             ConversationCard(
                 chat = chat,
                 currentUserId = currentUserId,
                 onClick = {
                     scope.launch {
+                        // Mark as read before navigating
                         ChatRepository.markChatAsRead(chat.id, currentUserId)
-                    }
-                    // Simple navigation - chat screen will load user data from Firestore
-                    val route = "chat/${chat.id}/$otherUserId/loading/loading"
-                    android.util.Log.d("InboxScreen", "Navigating to: $route")
-                    android.util.Log.d("InboxScreen", "chatId: ${chat.id}, otherUserId: $otherUserId")
 
-                    try {
-                        navController.navigate(route)
-                        android.util.Log.d("InboxScreen", "Navigation successful")
-                    } catch (e: Exception) {
-                        android.util.Log.e("InboxScreen", "Navigation failed", e)
+                        // Navigate to chat
+                        ChatHelper.navigateToChat(
+                            navController = navController,
+                            chat = chat,
+                            currentUserId = currentUserId
+                        )
                     }
                 },
                 onDelete = { onDeleteChat(chat) }
@@ -334,11 +328,10 @@ private fun ConversationCard(
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
-    // Get unread count for current user
-    val unreadCount = chat.unreadCounts[currentUserId] ?: 0
-
-    // Check if someone is typing
-    val isTyping = chat.typingUsers.isNotEmpty() && !chat.typingUsers.contains(currentUserId)
+    val unreadCount = chat.getUnreadCount(currentUserId)
+    val isTyping = chat.isOtherUserTyping(currentUserId)
+    val otherUserName = chat.getOtherUserName(currentUserId)
+    val otherUserRole = chat.getOtherUserRole(currentUserId)
 
     Card(
         modifier = Modifier
@@ -346,11 +339,15 @@ private fun ConversationCard(
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp,
+            defaultElevation = if (unreadCount > 0) 3.dp else 2.dp,
             pressedElevation = 4.dp
         ),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = if (unreadCount > 0) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
         )
     ) {
         Row(
@@ -374,7 +371,7 @@ private fun ConversationCard(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = chat.title.firstOrNull()?.uppercase() ?: "?",
+                    text = otherUserName.firstOrNull()?.uppercase() ?: "?",
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp
@@ -392,16 +389,27 @@ private fun ConversationCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = chat.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.SemiBold,
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = otherUserName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.SemiBold,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        // Role badge
+                        if (otherUserRole == "service_provider") {
+                            Text(
+                                text = "Service Provider",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
 
                     Spacer(Modifier.width(8.dp))
 
@@ -516,17 +524,15 @@ private fun formatTimeAgo(timestamp: Timestamp): String {
     val diff = now - timestampMillis
 
     return when {
-        diff < 60_000 -> "now" // Less than 1 minute
-        diff < 3600_000 -> "${diff / 60_000}m" // Minutes
-        diff < 86400_000 -> "${diff / 3600_000}h" // Hours
-        diff < 172800_000 -> "Yesterday" // Yesterday
+        diff < 60_000 -> "now"
+        diff < 3600_000 -> "${diff / 60_000}m"
+        diff < 86400_000 -> "${diff / 3600_000}h"
+        diff < 172800_000 -> "Yesterday"
         diff < 604800_000 -> {
-            // This week - show day name
             val sdf = SimpleDateFormat("EEE", Locale.getDefault())
             sdf.format(timestamp.toDate())
         }
         else -> {
-            // Older - show date
             val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
             sdf.format(timestamp.toDate())
         }
@@ -648,7 +654,7 @@ private fun EmptyInboxState(
 
             Text(
                 text = if (isService)
-                    "Once a provider accepts your request, you'll chat here"
+                    "Connect with service providers for your needs"
                 else
                     "Start connecting with your neighbors!",
                 style = MaterialTheme.typography.bodyMedium,
@@ -674,7 +680,8 @@ private fun EmptyInboxState(
 @Composable
 private fun UserPickerDialog(
     onDismiss: () -> Unit,
-    onUserSelected: (SimpleUser) -> Unit
+    onUserSelected: (SimpleUser) -> Unit,
+    filterServiceProviders: Boolean = false
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var users by remember { mutableStateOf<List<SimpleUser>>(emptyList()) }
@@ -683,7 +690,7 @@ private fun UserPickerDialog(
 
     LaunchedEffect(Unit) {
         isLoading = true
-        users = loadAllUsers(currentUserId)
+        users = loadAllUsers(currentUserId, filterServiceProviders)
         isLoading = false
     }
 
@@ -830,7 +837,10 @@ private fun UserPickerItem(
     }
 }
 
-private suspend fun loadAllUsers(currentUserId: String?): List<SimpleUser> {
+private suspend fun loadAllUsers(
+    currentUserId: String?,
+    filterServiceProviders: Boolean
+): List<SimpleUser> {
     return try {
         val firestore = FirebaseFirestore.getInstance()
         val snapshot = firestore.collection("users")
@@ -840,11 +850,18 @@ private suspend fun loadAllUsers(currentUserId: String?): List<SimpleUser> {
         snapshot.documents.mapNotNull { doc ->
             if (doc.id == currentUserId) return@mapNotNull null
 
+            val role = doc.getString("role") ?: "member"
+
+            // Filter out service providers if in Members tab
+            if (filterServiceProviders && role == "service_provider") {
+                return@mapNotNull null
+            }
+
             SimpleUser(
                 uid = doc.id,
                 name = doc.getString("name") ?: "Unknown User",
                 photoUrl = doc.getString("photoUrl") ?: "",
-                role = doc.getString("role") ?: "member"
+                role = role
             )
         }.sortedBy { it.name }
 

@@ -2,6 +2,7 @@ package com.example.article.Repository
 
 import android.util.Log
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
@@ -12,268 +13,338 @@ import kotlinx.coroutines.tasks.await
 class ServiceRequestRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
-    private val requestsCollection = firestore.collection(ServiceRequest.COLLECTION_NAME)
+    private val col = firestore.collection(ServiceRequest.COLLECTION_NAME)
 
     companion object {
         private const val TAG = "ServiceRequestRepo"
     }
 
+    // ─────────────────────────────────────────────
+    // REAL-TIME STREAMS
+    // ─────────────────────────────────────────────
+
     /**
-     * Get all requests assigned to a specific provider in real-time
+     * All requests created by a specific member, newest first.
+     *
+     * WHY no orderBy: combining .whereEqualTo("memberId") + .orderBy("createdAt")
+     * requires a composite Firestore index. Without that index deployed, Firestore
+     * silently returns an error and the listener emits emptyList(). We sort in-memory
+     * instead so it works without any index setup.
+     */
+    fun getMemberRequests(memberId: String): Flow<List<ServiceRequest>> = callbackFlow {
+        val listener = col
+            .whereEqualTo("memberId", memberId)
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    Log.e(TAG, "getMemberRequests error", err)
+                    trySend(emptyList()); return@addSnapshotListener
+                }
+                val sorted = (snap?.toRequests() ?: emptyList())
+                    .sortedByDescending { it.createdAt.seconds }
+                trySend(sorted)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    /**
+     * All requests assigned to a specific provider (accepted / in_progress / completed).
+     *
+     * Same reasoning as getMemberRequests — single-field query, in-memory sort.
      */
     fun getProviderRequests(providerId: String): Flow<List<ServiceRequest>> = callbackFlow {
-        val listener = requestsCollection
+        val listener = col
             .whereEqualTo("providerId", providerId)
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e(TAG, "Error listening to provider requests", error)
-                    trySend(emptyList())
-                    return@addSnapshotListener
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    Log.e(TAG, "getProviderRequests error", err)
+                    trySend(emptyList()); return@addSnapshotListener
                 }
-
-                val requests = snapshot?.documents?.mapNotNull { doc ->
-                    try {
-                        doc.toObject(ServiceRequest::class.java)?.copy(id = doc.id)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error parsing request ${doc.id}", e)
-                        null
-                    }
-                } ?: emptyList()
-
-                Log.d(TAG, "Loaded ${requests.size} requests for provider $providerId")
-                trySend(requests)
+                val sorted = (snap?.toRequests() ?: emptyList())
+                    .sortedByDescending { it.createdAt.seconds }
+                trySend(sorted)
             }
-
         awaitClose { listener.remove() }
     }
 
     /**
-     * Get all pending requests (not yet assigned to a provider)
+     * Pending requests visible to providers on the home feed.
+     * Optionally filtered by serviceType.
+     *
+     * WHY no .whereEqualTo("providerId", null):
+     * Firestore null-equality filters are unreliable and often return nothing
+     * (or require a special index). We query by status only and filter unassigned
+     * documents in-memory. This is safe because a newly created request has
+     * providerId = null in the data model and won't have that field set in Firestore,
+     * so checking `it.providerId == null` in Kotlin correctly excludes claimed requests.
      */
-    fun getPendingRequests(): Flow<List<ServiceRequest>> = callbackFlow {
-        val listener = requestsCollection
+    fun getPendingRequests(serviceType: String? = null): Flow<List<ServiceRequest>> = callbackFlow {
+        val listener = col
             .whereEqualTo("status", ServiceRequest.STATUS_PENDING)
-            .whereEqualTo("providerId", null)
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e(TAG, "Error listening to pending requests", error)
-                    trySend(emptyList())
-                    return@addSnapshotListener
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    Log.e(TAG, "getPendingRequests error", err)
+                    trySend(emptyList()); return@addSnapshotListener
                 }
-
-                val requests = snapshot?.documents?.mapNotNull { doc ->
-                    try {
-                        doc.toObject(ServiceRequest::class.java)?.copy(id = doc.id)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error parsing pending request ${doc.id}", e)
-                        null
-                    }
-                } ?: emptyList()
-
-                Log.d(TAG, "Loaded ${requests.size} pending requests")
-                trySend(requests)
+                val results = (snap?.toRequests() ?: emptyList())
+                    // Only show requests not yet claimed by any provider
+                    .filter { it.providerId == null }
+                    // Optionally narrow to a specific trade
+                    .filter { serviceType == null || it.serviceType == serviceType }
+                    .sortedByDescending { it.createdAt.seconds }
+                trySend(results)
             }
-
         awaitClose { listener.remove() }
     }
 
+    // ─────────────────────────────────────────────
+    // ONE-SHOT READS
+    // ─────────────────────────────────────────────
+
+    suspend fun getRequest(requestId: String): Result<ServiceRequest> = runCatching {
+        val doc = col.document(requestId).get().await()
+        doc.toObject(ServiceRequest::class.java)?.copy(id = doc.id)
+            ?: error("Request $requestId not found")
+    }
+
+    // ─────────────────────────────────────────────
+    // MEMBER ACTIONS
+    // ─────────────────────────────────────────────
+
     /**
-     * Accept a service request (assign to provider)
+     * Create a brand-new service request from a member.
+     * Returns the new document ID.
+     */
+    suspend fun createRequest(request: ServiceRequest): Result<String> = runCatching {
+        val docRef = col.add(request.toMap()).await()
+        Log.d(TAG, "Created request ${docRef.id}")
+        docRef.id
+    }
+
+    /**
+     * Member cancels a pending request.
+     * Only allowed when status == pending.
+     */
+    /**
+     * Member cancels a request.
+     * Allowed for: pending (no provider yet) and accepted (provider assigned but not started).
+     * When cancelling an accepted request, provider assignment is also cleared so the
+     * provider's active count stays accurate.
+     */
+    suspend fun cancelRequest(requestId: String, memberId: String): Result<Unit> = runCatching {
+        val doc = col.document(requestId).get().await()
+        val status = doc.getString("status")
+        val owner = doc.getString("memberId")
+
+        require(owner == memberId) { "Not authorized to cancel this request" }
+        require(
+            status == ServiceRequest.STATUS_PENDING ||
+                    status == ServiceRequest.STATUS_ACCEPTED
+        ) {
+            "Cannot cancel a request that is already $status"
+        }
+
+        val updates = mutableMapOf<String, Any?>(
+            "status" to ServiceRequest.STATUS_CANCELLED,
+            "updatedAt" to Timestamp.now()
+        )
+
+        // If a provider had already accepted, clear their assignment so their
+        // active count reflects reality and the job doesn't linger in their feed
+        if (status == ServiceRequest.STATUS_ACCEPTED) {
+            updates["providerId"] = FieldValue.delete()
+            updates["providerName"] = FieldValue.delete()
+            updates["acceptedAt"] = FieldValue.delete()
+        }
+
+        col.document(requestId).update(updates).await()
+        Log.d(TAG, "Request $requestId cancelled by member $memberId (was $status)")
+    }
+
+    /**
+     * Member rates a completed request.
+     */
+    suspend fun rateRequest(
+        requestId: String,
+        memberId: String,
+        rating: Float,
+        review: String
+    ): Result<Unit> = runCatching {
+        val doc = col.document(requestId).get().await()
+        require(doc.getString("memberId") == memberId) { "Not authorized" }
+        require(doc.getString("status") == ServiceRequest.STATUS_COMPLETED) {
+            "Can only rate completed requests"
+        }
+
+        col.document(requestId).update(
+            mapOf(
+                "rating" to rating,
+                "review" to review,
+                "updatedAt" to Timestamp.now()
+            )
+        ).await()
+
+        // Also update the provider's aggregate rating in their user document
+        val providerId = doc.getString("providerId")
+        if (providerId != null) {
+            updateProviderRating(providerId, rating)
+        }
+
+        Log.d(TAG, "Request $requestId rated $rating by member $memberId")
+    }
+
+    // ─────────────────────────────────────────────
+    // PROVIDER ACTIONS
+    // ─────────────────────────────────────────────
+
+    /**
+     * Provider accepts a pending request.
+     * Atomically sets providerId, providerName, status, acceptedAt.
+     * Uses a transaction to prevent two providers claiming the same request simultaneously.
      */
     suspend fun acceptRequest(
         requestId: String,
         providerId: String,
         providerName: String
-    ): Result<Unit> = try {
-        val updates = hashMapOf<String, Any>(
-            "providerId" to providerId,
-            "providerName" to providerName,
-            "status" to ServiceRequest.STATUS_ACCEPTED,
-            "updatedAt" to Timestamp.now()
-        )
+    ): Result<Unit> = runCatching {
+        firestore.runTransaction { tx ->
+            val ref = col.document(requestId)
+            val snap = tx.get(ref)
+            val currentStatus = snap.getString("status")
 
-        requestsCollection.document(requestId)
-            .update(updates)
-            .await()
+            require(currentStatus == ServiceRequest.STATUS_PENDING) {
+                "Request is no longer pending (status: $currentStatus)"
+            }
+            require(snap.getString("providerId") == null) {
+                "Request already claimed by another provider"
+            }
 
+            tx.update(
+                ref, mapOf(
+                    "providerId" to providerId,
+                    "providerName" to providerName,
+                    "status" to ServiceRequest.STATUS_ACCEPTED,
+                    "acceptedAt" to Timestamp.now(),
+                    "updatedAt" to Timestamp.now()
+                )
+            )
+        }.await()
         Log.d(TAG, "Request $requestId accepted by provider $providerId")
-        Result.success(Unit)
-    } catch (e: Exception) {
-        Log.e(TAG, "Error accepting request $requestId", e)
-        Result.failure(e)
     }
 
     /**
-     * Mark request as in progress
+     * Provider starts work — transitions accepted → in_progress.
      */
-    suspend fun startWork(requestId: String): Result<Unit> = try {
-        val updates = hashMapOf<String, Any>(
-            "status" to ServiceRequest.STATUS_IN_PROGRESS,
-            "updatedAt" to Timestamp.now()
-        )
-
-        requestsCollection.document(requestId)
-            .update(updates)
-            .await()
-
-        Log.d(TAG, "Request $requestId marked as in progress")
-        Result.success(Unit)
-    } catch (e: Exception) {
-        Log.e(TAG, "Error starting work on request $requestId", e)
-        Result.failure(e)
+    suspend fun startWork(requestId: String): Result<Unit> = runCatching {
+        col.document(requestId).update(
+            mapOf(
+                "status" to ServiceRequest.STATUS_IN_PROGRESS,
+                "startedAt" to Timestamp.now(),
+                "updatedAt" to Timestamp.now()
+            )
+        ).await()
+        Log.d(TAG, "Request $requestId started")
     }
 
     /**
-     * Complete a service request
+     * Provider marks as completed.
      */
-    suspend fun completeRequest(requestId: String): Result<Unit> = try {
-        val updates = hashMapOf<String, Any>(
-            "status" to ServiceRequest.STATUS_COMPLETED,
-            "completedAt" to Timestamp.now(),
-            "updatedAt" to Timestamp.now()
-        )
-
-        requestsCollection.document(requestId)
-            .update(updates)
-            .await()
-
-        Log.d(TAG, "Request $requestId marked as completed")
-        Result.success(Unit)
-    } catch (e: Exception) {
-        Log.e(TAG, "Error completing request $requestId", e)
-        Result.failure(e)
+    suspend fun completeRequest(requestId: String): Result<Unit> = runCatching {
+        col.document(requestId).update(
+            mapOf(
+                "status" to ServiceRequest.STATUS_COMPLETED,
+                "completedAt" to Timestamp.now(),
+                "updatedAt" to Timestamp.now()
+            )
+        ).await()
+        Log.d(TAG, "Request $requestId completed")
     }
 
     /**
-     * Decline/Cancel a request
+     * Provider declines / backs out of a request.
+     * byProvider=true  → resets to pending so another provider can claim it.
+     * byProvider=false → admin/system cancel, marks cancelled.
      */
-    suspend fun declineRequest(requestId: String, byProvider: Boolean = false): Result<Unit> = try {
-        val updates = if (byProvider) {
-            // Provider declining after acceptance - reset to pending
-            hashMapOf<String, Any>(
-                "providerId" to com.google.firebase.firestore.FieldValue.delete(),
-                "providerName" to com.google.firebase.firestore.FieldValue.delete(),
+    suspend fun declineRequest(
+        requestId: String,
+        byProvider: Boolean = true
+    ): Result<Unit> = runCatching {
+        val updates: Map<String, Any?> = if (byProvider) {
+            mapOf(
+                "providerId" to FieldValue.delete(),
+                "providerName" to FieldValue.delete(),
+                "acceptedAt" to FieldValue.delete(),
+                "startedAt" to FieldValue.delete(),
                 "status" to ServiceRequest.STATUS_PENDING,
                 "updatedAt" to Timestamp.now()
             )
         } else {
-            // Cancelling completely
-            hashMapOf<String, Any>(
+            mapOf(
                 "status" to ServiceRequest.STATUS_CANCELLED,
                 "updatedAt" to Timestamp.now()
             )
         }
-
-        requestsCollection.document(requestId)
-            .update(updates)
-            .await()
-
-        Log.d(TAG, "Request $requestId declined/cancelled")
-        Result.success(Unit)
-    } catch (e: Exception) {
-        Log.e(TAG, "Error declining request $requestId", e)
-        Result.failure(e)
+        col.document(requestId).update(updates).await()
+        Log.d(TAG, "Request $requestId declined (byProvider=$byProvider)")
     }
 
-    /**
-     * Get a single request by ID
-     */
-    suspend fun getRequest(requestId: String): Result<ServiceRequest> = try {
-        val doc = requestsCollection.document(requestId).get().await()
-        val request = doc.toObject(ServiceRequest::class.java)?.copy(id = doc.id)
+    // ─────────────────────────────────────────────
+    // ADMIN ACTIONS
+    // ─────────────────────────────────────────────
 
-        if (request != null) {
-            Result.success(request)
-        } else {
-            Result.failure(Exception("Request not found"))
+    /**
+     * Admin hard-cancel: set status = cancelled regardless of current state.
+     */
+    suspend fun adminCancelRequest(requestId: String): Result<Unit> = runCatching {
+        col.document(requestId).update(
+            mapOf(
+                "status" to ServiceRequest.STATUS_CANCELLED,
+                "updatedAt" to Timestamp.now()
+            )
+        ).await()
+    }
+
+    // ─────────────────────────────────────────────
+    // LINKING
+    // ─────────────────────────────────────────────
+
+    /** Link a chat thread to a service request. */
+    suspend fun linkChat(requestId: String, chatId: String): Result<Unit> = runCatching {
+        col.document(requestId).update("chatId", chatId).await()
+        Log.d(TAG, "Linked chat $chatId to request $requestId")
+    }
+
+    // ─────────────────────────────────────────────
+    // HELPERS
+    // ─────────────────────────────────────────────
+
+    private suspend fun updateProviderRating(providerId: String, newRating: Float) {
+        try {
+            val userRef = firestore.collection("users").document(providerId)
+            firestore.runTransaction { tx ->
+                val snap = tx.get(userRef)
+                val currentAvg = (snap.getDouble("averageRating") ?: 0.0).toFloat()
+                val count = (snap.getLong("ratingCount") ?: 0L).toInt()
+                val newAvg = ((currentAvg * count) + newRating) / (count + 1)
+                tx.update(
+                    userRef, mapOf(
+                        "averageRating" to newAvg,
+                        "ratingCount" to count + 1
+                    )
+                )
+            }.await()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update provider rating", e)
         }
-    } catch (e: Exception) {
-        Log.e(TAG, "Error getting request $requestId", e)
-        Result.failure(e)
     }
 
-    /**
-     * Create a chat for a request
-     */
-    suspend fun createRequestChat(requestId: String, chatId: String): Result<Unit> = try {
-        requestsCollection.document(requestId)
-            .update("chatId", chatId)
-            .await()
-
-        Log.d(TAG, "Chat $chatId linked to request $requestId")
-        Result.success(Unit)
-    } catch (e: Exception) {
-        Log.e(TAG, "Error linking chat to request", e)
-        Result.failure(e)
-    }
-
-    /**
-     * Get all requests created by a specific member in real-time
-     */
-    fun getMemberRequests(memberId: String): Flow<List<ServiceRequest>> = callbackFlow {
-        val listener = requestsCollection
-            .whereEqualTo("memberId", memberId)
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e(TAG, "Error listening to member requests", error)
-                    trySend(emptyList())
-                    return@addSnapshotListener
-                }
-
-                val requests = snapshot?.documents?.mapNotNull { doc ->
-                    try {
-                        doc.toObject(ServiceRequest::class.java)?.copy(id = doc.id)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error parsing request ${doc.id}", e)
-                        null
-                    }
-                } ?: emptyList()
-
-                Log.d(TAG, "Loaded ${requests.size} requests for member $memberId")
-                trySend(requests)
+    // Extension to map a Firestore QuerySnapshot into a typed list
+    private fun com.google.firebase.firestore.QuerySnapshot.toRequests(): List<ServiceRequest> =
+        documents.mapNotNull { doc ->
+            try {
+                doc.toObject(ServiceRequest::class.java)?.copy(id = doc.id)
+            } catch (e: Exception) {
+                Log.e(TAG, "Parse error for ${doc.id}", e)
+                null
             }
-
-        awaitClose { listener.remove() }
-    }
-
-    /**
-     * Create a new service request
-     */
-    suspend fun createRequest(request: ServiceRequest): Result<String> = try {
-        val docRef = requestsCollection
-            .add(request.toMap())
-            .await()
-
-        Log.d(TAG, "Request created with ID: ${docRef.id}")
-        Result.success(docRef.id)
-    } catch (e: Exception) {
-        Log.e(TAG, "Error creating request", e)
-        Result.failure(e)
-    }
-
-    /**
-     * Update request status
-     */
-    suspend fun updateRequestStatus(
-        requestId: String,
-        status: String
-    ): Result<Unit> = try {
-        val updates = hashMapOf<String, Any>(
-            "status" to status,
-            "updatedAt" to Timestamp.now()
-        )
-
-        requestsCollection.document(requestId)
-            .update(updates)
-            .await()
-
-        Log.d(TAG, "Request $requestId status updated to $status")
-        Result.success(Unit)
-    } catch (e: Exception) {
-        Log.e(TAG, "Error updating request status", e)
-        Result.failure(e)
-    }
+        }
 }

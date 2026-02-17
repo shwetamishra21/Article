@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,68 +35,63 @@ fun ProviderRequestsScreen(
     val auth = FirebaseAuth.getInstance()
     val providerId = auth.currentUser?.uid
 
-    val requests by viewModel.requests.collectAsState()
-    val loading by viewModel.loading.collectAsState()
-    val error by viewModel.error.collectAsState()
+    val requests        by viewModel.requests.collectAsState()
+    val pendingRequests by viewModel.pendingRequests.collectAsState()
+    val loading         by viewModel.loading.collectAsState()
+    val pendingLoading  by viewModel.pendingLoading.collectAsState()
+    val error           by viewModel.error.collectAsState()
 
-    var selectedFilter by remember { mutableStateOf(ServiceRequest.STATUS_ACCEPTED) }
+    // 0=New(Pending), 1=Accepted, 2=In Progress, 3=Completed
+    var selectedTab by remember { mutableStateOf(0) }
 
-    // Load requests when screen opens
     LaunchedEffect(providerId) {
         providerId?.let {
             viewModel.loadRequests(it)
+            viewModel.loadPendingRequests()
         }
     }
 
-    // Show error snackbar
-    error?.let { errorMessage ->
-        LaunchedEffect(errorMessage) {
+    error?.let { msg ->
+        LaunchedEffect(msg) {
             kotlinx.coroutines.delay(3000)
             viewModel.clearError()
         }
     }
 
-    // Guard: not authenticated
     if (providerId == null) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                "Not authenticated",
-                color = MaterialTheme.colorScheme.error,
-                fontSize = 16.sp
-            )
+        Box(Modifier.fillMaxSize(), Alignment.Center) {
+            Text("Not authenticated", color = MaterialTheme.colorScheme.error, fontSize = 16.sp)
         }
         return
     }
 
-    val filteredRequests = requests.filter { it.status == selectedFilter }
+    val acceptedList   = requests.filter { it.status == ServiceRequest.STATUS_ACCEPTED }
+    val inProgressList = requests.filter { it.status == ServiceRequest.STATUS_IN_PROGRESS }
+    val completedList  = requests.filter { it.status == ServiceRequest.STATUS_COMPLETED }
+
+    val filteredRequests = when (selectedTab) {
+        0    -> pendingRequests
+        1    -> acceptedList
+        2    -> inProgressList
+        3    -> completedList
+        else -> emptyList()
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = "Service Requests",
+                        "Service Requests",
                         fontWeight = FontWeight.Bold,
                         fontSize = 22.sp,
                         color = BlueOnPrimary
                     )
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                ),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 modifier = Modifier
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(BluePrimary, BlueSecondary)
-                        )
-                    )
-                    .shadow(
-                        elevation = 6.dp,
-                        spotColor = BluePrimary.copy(alpha = 0.4f)
-                    )
+                    .background(Brush.linearGradient(listOf(BluePrimary, BlueSecondary)))
+                    .shadow(6.dp, spotColor = BluePrimary.copy(alpha = 0.4f))
             )
         },
         snackbarHost = {
@@ -103,9 +99,7 @@ fun ProviderRequestsScreen(
                 Snackbar(
                     modifier = Modifier.padding(16.dp),
                     containerColor = MaterialTheme.colorScheme.errorContainer
-                ) {
-                    Text(it)
-                }
+                ) { Text(it) }
             }
         }
     ) { padding ->
@@ -115,89 +109,146 @@ fun ProviderRequestsScreen(
                 .padding(padding)
                 .background(BackgroundLight)
         ) {
-            // Filter Chips
+
+            // ── Tab Row ─────────────────────────────────────────────────────
             ScrollableTabRow(
-                selectedTabIndex = listOf(
-                    ServiceRequest.STATUS_ACCEPTED,
-                    ServiceRequest.STATUS_IN_PROGRESS,
-                    ServiceRequest.STATUS_COMPLETED
-                ).indexOf(selectedFilter),
+                selectedTabIndex = selectedTab,
                 containerColor = SurfaceLight,
                 contentColor = BluePrimary,
                 edgePadding = 16.dp,
                 divider = {}
             ) {
                 listOf(
-                    ServiceRequest.STATUS_ACCEPTED to "Accepted",
-                    ServiceRequest.STATUS_IN_PROGRESS to "In Progress",
-                    ServiceRequest.STATUS_COMPLETED to "Completed"
-                ).forEach { (status, label) ->
+                    "New"         to pendingRequests.size,
+                    "Accepted"    to acceptedList.size,
+                    "In Progress" to inProgressList.size,
+                    "Completed"   to completedList.size
+                ).forEachIndexed { index, (label, count) ->
                     FilterChip(
-                        selected = selectedFilter == status,
-                        onClick = { selectedFilter = status },
+                        selected = selectedTab == index,
+                        onClick  = { selectedTab = index },
                         label = {
-                            Text(
-                                label,
-                                fontSize = 13.sp,
-                                fontWeight = if (selectedFilter == status) FontWeight.Bold else FontWeight.Medium
-                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    label,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (selectedTab == index) FontWeight.Bold
+                                    else FontWeight.Medium
+                                )
+                                if (count > 0) {
+                                    Surface(
+                                        color = if (selectedTab == index) BluePrimary
+                                        else Color(0xFFE0E0E0),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Text(
+                                            "$count",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (selectedTab == index) Color.White
+                                            else Color(0xFF666666),
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
                         },
                         modifier = Modifier.padding(horizontal = 4.dp),
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = BluePrimary.copy(alpha = 0.15f),
-                            selectedLabelColor = BluePrimary
+                            selectedLabelColor     = BluePrimary
                         )
                     )
                 }
             }
 
-            // Loading indicator
-            if (loading && requests.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
+            // ── Loading ─────────────────────────────────────────────────────
+            val isLoading = if (selectedTab == 0) pendingLoading else loading
+            if (isLoading && filteredRequests.isEmpty()) {
+                Box(Modifier.fillMaxSize(), Alignment.Center) {
                     CircularProgressIndicator(color = BluePrimary)
                 }
                 return@Column
             }
 
-            // Empty state
-            if (!loading && filteredRequests.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
+            // ── Empty state ─────────────────────────────────────────────────
+            if (!isLoading && filteredRequests.isEmpty()) {
+                Box(Modifier.fillMaxSize(), Alignment.Center) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Icon(
-                            Icons.Default.Assignment,
+                            imageVector = when (selectedTab) {
+                                0    -> Icons.Default.Inbox
+                                1    -> Icons.Default.Assignment
+                                2    -> Icons.Default.Loop
+                                else -> Icons.Default.Done
+                            },
                             contentDescription = null,
                             modifier = Modifier.size(64.dp),
                             tint = Color(0xFF999999).copy(alpha = 0.5f)
                         )
                         Text(
-                            "No ${selectedFilter.replace("_", " ")} requests",
+                            text = when (selectedTab) {
+                                0    -> "No new requests"
+                                1    -> "No accepted requests"
+                                2    -> "No jobs in progress"
+                                else -> "No completed jobs yet"
+                            },
                             fontSize = 16.sp,
-                            color = Color(0xFF666666)
+                            color = Color(0xFF666666),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = when (selectedTab) {
+                                0    -> "New service requests from members will appear here"
+                                1    -> "Accept a request from the New tab to see it here"
+                                2    -> "Begin an accepted job to move it here"
+                                else -> "Completed jobs will appear here"
+                            },
+                            fontSize = 13.sp,
+                            color = Color(0xFF999999)
                         )
                     }
                 }
             } else {
-                // Requests list
+                // ── List ────────────────────────────────────────────────────
                 LazyColumn(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(filteredRequests, key = { it.id }) { request ->
-                        ProviderRequestCard(
-                            request = request,
-                            onStartWork = { viewModel.startWork(request.id) },
-                            onComplete = { viewModel.complete(request.id, providerId) },
-                            onDecline = { viewModel.decline(request.id) }
-                        )
+                    if (selectedTab == 0) {
+                        items(filteredRequests, key = { it.id }) { request ->
+                            PendingRequestCard(
+                                request  = request,
+                                onAccept = {
+                                    viewModel.accept(request.id, providerId)
+                                    selectedTab = 1   // jump straight to Accepted tab
+                                }
+                            )
+                        }
+                    } else {
+                        items(filteredRequests, key = { it.id }) { request ->
+                            ProviderRequestCard(
+                                request       = request,
+                                onBeginWork   = {
+                                    viewModel.startWork(request.id)
+                                    selectedTab = 2   // jump to In Progress tab
+                                },
+                                onMarkComplete = {
+                                    viewModel.complete(request.id, providerId)
+                                    selectedTab = 3   // jump to Completed tab
+                                },
+                                onDecline     = {
+                                    viewModel.decline(request.id)
+                                    selectedTab = 0   // return to New tab
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -205,21 +256,114 @@ fun ProviderRequestsScreen(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// "New" tab card — accept only
+// ─────────────────────────────────────────────────────────────────────────────
 @Composable
-private fun ProviderRequestCard(
+private fun PendingRequestCard(
     request: ServiceRequest,
-    onStartWork: () -> Unit,
-    onComplete: () -> Unit,
-    onDecline: () -> Unit
+    onAccept: () -> Unit
 ) {
+    var accepting by remember { mutableStateOf(false) }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 4.dp,
-                shape = RoundedCornerShape(16.dp),
-                spotColor = BluePrimary.copy(alpha = 0.3f)
-            ),
+            .shadow(4.dp, RoundedCornerShape(16.dp), spotColor = BluePrimary.copy(alpha = 0.25f)),
+        shape = RoundedCornerShape(16.dp),
+        color = SurfaceLight
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Header
+            Row(
+                Modifier.fillMaxWidth(),
+                Arrangement.SpaceBetween,
+                Alignment.CenterVertically
+            ) {
+                Row(Arrangement.spacedBy(12.dp), Alignment.CenterVertically) {
+                    AvatarCircle(request.memberName, 40)
+                    Column {
+                        Text(request.memberName, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = OnSurfaceLight)
+                        Text(request.serviceType, fontSize = 12.sp, color = Color(0xFF666666))
+                    }
+                }
+                Surface(RoundedCornerShape(6.dp), color = Color(0xFFFF9800).copy(alpha = 0.15f)) {
+                    Text(
+                        "NEW",
+                        Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFF9800), letterSpacing = 0.5.sp
+                    )
+                }
+            }
+
+            if (request.memberNeighborhood.isNotBlank()) {
+                IconText(Icons.Default.LocationOn, request.memberNeighborhood)
+            }
+
+            if (request.title.isNotEmpty()) {
+                Text(request.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = OnSurfaceLight)
+            }
+
+            if (request.description.isNotEmpty()) {
+                Text(
+                    request.description, fontSize = 14.sp,
+                    color = OnSurfaceLight.copy(alpha = 0.8f), lineHeight = 20.sp, maxLines = 3
+                )
+            }
+
+            Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(16.dp)) {
+                request.preferredDate?.let {
+                    InfoChip(Icons.Default.CalendarToday, formatDate(it.toDate().time))
+                }
+                InfoChip(Icons.Default.AccessTime, formatTimestamp(request.createdAt.toDate().time))
+            }
+
+            HorizontalDivider(thickness = 1.dp, color = BluePrimary.copy(alpha = 0.08f))
+
+            // Accept button
+            Button(
+                onClick = { accepting = true; onAccept() },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = BluePrimary),
+                enabled = !accepting
+            ) {
+                if (accepting) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Accepting…", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                } else {
+                    Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Accept Request", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Accepted / In Progress / Completed card
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun ProviderRequestCard(
+    request: ServiceRequest,
+    onBeginWork: () -> Unit,
+    onMarkComplete: () -> Unit,
+    onDecline: () -> Unit
+) {
+    var showDeclineDialog by remember { mutableStateOf(false) }
+    var beginningWork     by remember { mutableStateOf(false) }
+    var completing        by remember { mutableStateOf(false) }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(4.dp, RoundedCornerShape(16.dp), spotColor = BluePrimary.copy(alpha = 0.3f)),
         shape = RoundedCornerShape(16.dp),
         color = SurfaceLight
     ) {
@@ -228,215 +372,267 @@ private fun ProviderRequestCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        modifier = Modifier.size(40.dp),
-                        shape = CircleShape,
-                        color = BluePrimary.copy(alpha = 0.15f)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = request.memberName.firstOrNull()?.uppercase() ?: "M",
-                                color = BluePrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            )
-                        }
-                    }
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                Row(Arrangement.spacedBy(12.dp), Alignment.CenterVertically) {
+                    AvatarCircle(request.memberName, 40)
                     Column {
-                        Text(
-                            text = request.memberName,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = OnSurfaceLight
-                        )
-                        Text(
-                            text = request.serviceType,
-                            fontSize = 13.sp,
-                            color = Color(0xFF666666)
-                        )
+                        Text(request.memberName, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = OnSurfaceLight)
+                        Text(request.serviceType, fontSize = 13.sp, color = Color(0xFF666666))
                     }
                 }
-
                 StatusBadge(request.status)
             }
 
-            // Title
-            if (request.title.isNotEmpty()) {
-                Text(
-                    text = request.title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = OnSurfaceLight
-                )
+            if (request.memberNeighborhood.isNotBlank()) {
+                IconText(Icons.Default.LocationOn, request.memberNeighborhood)
             }
 
-            // Description
+            if (request.title.isNotEmpty()) {
+                Text(request.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = OnSurfaceLight)
+            }
+
             if (request.description.isNotEmpty()) {
                 Text(
-                    text = request.description,
-                    fontSize = 14.sp,
-                    color = OnSurfaceLight.copy(alpha = 0.8f),
-                    lineHeight = 20.sp
+                    request.description, fontSize = 14.sp,
+                    color = OnSurfaceLight.copy(alpha = 0.8f), lineHeight = 20.sp
                 )
             }
 
-            // Date Info
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+            // Date / time chips
+            Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(16.dp)) {
                 request.preferredDate?.let {
+                    InfoChip(Icons.Default.CalendarToday, formatDate(it.toDate().time))
+                }
+                InfoChip(Icons.Default.AccessTime, formatTimestamp(request.createdAt.toDate().time))
+                if (request.status == ServiceRequest.STATUS_IN_PROGRESS && request.acceptedAt != null) {
                     InfoChip(
-                        icon = Icons.Default.CalendarToday,
-                        text = formatDate(it.toDate().time)
+                        Icons.Default.CheckCircle,
+                        "Accepted ${formatTimestamp(request.acceptedAt.toDate().time)}"
                     )
                 }
-                InfoChip(
-                    icon = Icons.Default.AccessTime,
-                    text = formatTimestamp(request.createdAt.toDate().time)
-                )
             }
 
-            // Action Buttons
+            if (request.status != ServiceRequest.STATUS_COMPLETED) {
+                HorizontalDivider(thickness = 1.dp, color = BluePrimary.copy(alpha = 0.08f))
+            }
+
+            // ── Action section per status ─────────────────────────────────
             when (request.status) {
+
+                // ── ACCEPTED: Begin Work / Decline ────────────────────────
                 ServiceRequest.STATUS_ACCEPTED -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
-                            onClick = onDecline,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text("Decline", fontSize = 14.sp)
-                        }
-                        Button(
-                            onClick = onStartWork,
+                            onClick = { showDeclineDialog = true },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFD32F2F))
                         ) {
-                            Text("Start Work", fontSize = 14.sp)
+                            Icon(Icons.Default.Close, null, Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Decline", fontSize = 14.sp)
+                        }
+
+                        Button(
+                            onClick = { beginningWork = true; onBeginWork() },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
+                            enabled = !beginningWork
+                        ) {
+                            if (beginningWork) {
+                                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Color.White)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Starting…", fontSize = 14.sp)
+                            } else {
+                                Icon(Icons.Default.PlayArrow, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Begin Work", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
 
+                // ── IN PROGRESS: Mark as Complete ─────────────────────────
                 ServiceRequest.STATUS_IN_PROGRESS -> {
-                    Button(
-                        onClick = onComplete,
-                        modifier = Modifier.fillMaxWidth(),
+                    // Status banner
+                    Surface(
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                        color = Color(0xFF2196F3).copy(alpha = 0.08f),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text("Mark Complete", fontSize = 14.sp)
-                    }
-                }
-
-                ServiceRequest.STATUS_COMPLETED -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = Color(0xFF4CAF50),
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            "Completed",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF4CAF50)
-                        )
-                        request.completedAt?.let {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Loop, null, Modifier.size(16.dp), Color(0xFF2196F3))
                             Text(
-                                " • ${formatDate(it.toDate().time)}",
-                                fontSize = 13.sp,
-                                color = Color(0xFF666666)
+                                "Work is currently in progress",
+                                fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                                color = Color(0xFF2196F3)
                             )
                         }
+                    }
+
+                    Button(
+                        onClick = { completing = true; onMarkComplete() },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+                        enabled = !completing
+                    ) {
+                        if (completing) {
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Completing…", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        } else {
+                            Icon(Icons.Default.CheckCircle, null, Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Mark as Complete", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+
+                // ── COMPLETED ─────────────────────────────────────────────
+                ServiceRequest.STATUS_COMPLETED -> {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF4CAF50).copy(alpha = 0.08f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+                            Column {
+                                Text("Job Completed", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF4CAF50))
+                                request.completedAt?.let {
+                                    Text(formatDate(it.toDate().time), fontSize = 12.sp, color = Color(0xFF666666))
+                                }
+                            }
+                        }
+                    }
+
+                    if (request.rating != null) {
+                        HorizontalDivider(thickness = 1.dp, color = Color(0xFFFFC107).copy(alpha = 0.3f))
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Member's Rating", fontSize = 11.sp, color = Color(0xFF999999), fontWeight = FontWeight.Medium)
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                repeat(5) { i ->
+                                    Icon(
+                                        if (i < request.rating.toInt()) Icons.Default.Star else Icons.Default.StarBorder,
+                                        null, Modifier.size(16.dp),
+                                        if (i < request.rating.toInt()) Color(0xFFFFC107) else Color(0xFFCCCCCC)
+                                    )
+                                }
+                                Spacer(Modifier.width(4.dp))
+                                Text("${request.rating.toInt()} / 5", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF666666))
+                            }
+                            if (!request.review.isNullOrBlank()) {
+                                Text("\"${request.review}\"", fontSize = 13.sp, color = Color(0xFF666666), lineHeight = 18.sp, fontStyle = FontStyle.Italic)
+                            }
+                        }
+                    } else {
+                        Text("Awaiting member rating…", fontSize = 12.sp, color = Color(0xFF999999))
                     }
                 }
             }
         }
     }
+
+    if (showDeclineDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeclineDialog = false },
+            title = { Text("Decline Job?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Are you sure you want to decline \"${request.title}\"? " +
+                            "It will be returned to the queue for another provider."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { onDecline(); showDeclineDialog = false }) {
+                    Text("Yes, Decline", color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeclineDialog = false }) { Text("Keep Job") }
+            },
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reusable composables
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun AvatarCircle(name: String, sizeDp: Int) {
+    Surface(
+        modifier = Modifier.size(sizeDp.dp),
+        shape = CircleShape,
+        color = BluePrimary.copy(alpha = 0.15f)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = name.firstOrNull()?.uppercase() ?: "?",
+                color = BluePrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = (sizeDp * 0.4f).sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun IconText(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, Modifier.size(13.dp), Color(0xFF999999))
+        Text(text, fontSize = 12.sp, color = Color(0xFF999999))
+    }
 }
 
 @Composable
 private fun StatusBadge(status: String) {
-    val (color, text) = when (status) {
-        ServiceRequest.STATUS_PENDING -> Color(0xFFFF9800) to "PENDING"
-        ServiceRequest.STATUS_ACCEPTED -> BluePrimary to "ACCEPTED"
+    val (color, label) = when (status) {
+        ServiceRequest.STATUS_PENDING     -> Color(0xFFFF9800) to "PENDING"
+        ServiceRequest.STATUS_ACCEPTED    -> BluePrimary       to "ACCEPTED"
         ServiceRequest.STATUS_IN_PROGRESS -> Color(0xFF2196F3) to "IN PROGRESS"
-        ServiceRequest.STATUS_COMPLETED -> Color(0xFF4CAF50) to "COMPLETED"
-        ServiceRequest.STATUS_CANCELLED -> Color(0xFFD32F2F) to "CANCELLED"
-        else -> Color(0xFF999999) to status.uppercase()
+        ServiceRequest.STATUS_COMPLETED   -> Color(0xFF4CAF50) to "COMPLETED"
+        ServiceRequest.STATUS_CANCELLED   -> Color(0xFFD32F2F) to "CANCELLED"
+        else                              -> Color(0xFF999999) to status.uppercase()
     }
-
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = color.copy(alpha = 0.15f)
-    ) {
+    Surface(shape = RoundedCornerShape(6.dp), color = color.copy(alpha = 0.15f)) {
         Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            color = color,
-            letterSpacing = 0.5.sp
+            label, Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            fontSize = 11.sp, fontWeight = FontWeight.Bold, color = color, letterSpacing = 0.5.sp
         )
     }
 }
 
 @Composable
 private fun InfoChip(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = Color(0xFF666666)
-        )
-        Text(
-            text = text,
-            fontSize = 13.sp,
-            color = Color(0xFF666666)
-        )
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, Modifier.size(16.dp), Color(0xFF666666))
+        Text(text, fontSize = 13.sp, color = Color(0xFF666666))
     }
 }
 
-private fun formatDate(timestamp: Long): String {
-    val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
-    return sdf.format(Date(timestamp))
-}
+private fun formatDate(ts: Long) =
+    SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(ts))
 
-private fun formatTimestamp(timestamp: Long): String {
-    val now = System.currentTimeMillis()
-    val diff = now - timestamp
+private fun formatTimestamp(ts: Long): String {
+    val d = System.currentTimeMillis() - ts
     return when {
-        diff < 3600_000 -> "${diff / 60_000}m ago"
-        diff < 86400_000 -> "${diff / 3600_000}h ago"
-        else -> "${diff / 86400_000}d ago"
+        d < 3_600_000  -> "${d / 60_000}m ago"
+        d < 86_400_000 -> "${d / 3_600_000}h ago"
+        else           -> "${d / 86_400_000}d ago"
     }
 }

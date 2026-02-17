@@ -321,7 +321,7 @@ fun NewPostScreen(
 
                     scope.launch {
                         try {
-                            // ✅ FETCH USER DATA FROM FIRESTORE
+                            // Fetch user data from Firestore
                             val userDoc = firestore.collection("users")
                                 .document(user.uid)
                                 .get()
@@ -334,7 +334,7 @@ fun NewPostScreen(
 
                             val userPhotoUrl = userDoc.getString("photoUrl") ?: ""
 
-                            // Optimistic UI
+                            // Optimistic UI update
                             when (selectedType) {
                                 PostType.POST -> {
                                     viewModel.addOptimistic(
@@ -365,13 +365,16 @@ fun NewPostScreen(
                             }
 
                             // Prepare post data
+                            // NOTE: authorId is always set to current user — Firestore rules
+                            // now allow any signed-in user to create posts & announcements
+                            // as long as authorId == their own uid.
                             val postData = hashMapOf<String, Any?>(
                                 "type" to selectedType.name.lowercase(),
                                 "content" to content,
                                 "title" to if (selectedType == PostType.ANNOUNCEMENT) title else null,
                                 "authorId" to user.uid,
-                                "authorName" to userName,  // ✅ ACTUAL NAME
-                                "authorPhotoUrl" to userPhotoUrl,  // ✅ PROFILE PICTURE
+                                "authorName" to userName,
+                                "authorPhotoUrl" to userPhotoUrl,
                                 "likes" to 0,
                                 "likedBy" to emptyMap<String, Boolean>(),
                                 "commentCount" to 0,
@@ -381,7 +384,7 @@ fun NewPostScreen(
 
                             var imageUrl: String? = null
 
-                            // Upload image if present
+                            // Upload image if present (posts only)
                             if (imageUri != null) {
                                 val result = CloudinaryHelper.uploadImage(
                                     imageUri = imageUri!!,
@@ -396,7 +399,7 @@ fun NewPostScreen(
                                 }
                             }
 
-                            // Update with image URL
+                            // Final data with image URL
                             val finalPostData = postData.toMutableMap().apply {
                                 this["imageUrl"] = imageUrl
                             }

@@ -11,6 +11,7 @@ data class ChatThread(
     val participants: List<String> = emptyList(), // UIDs of all participants
     val participantNames: Map<String, String> = emptyMap(), // UID -> Name mapping
     val participantPhotos: Map<String, String> = emptyMap(), // UID -> Photo URL mapping
+    val participantRoles: Map<String, String> = emptyMap(), // UID -> Role mapping (NEW)
     val type: String = "member", // "member" or "service"
     val title: String = "",
     val lastMessage: String = "",
@@ -28,6 +29,51 @@ data class ChatThread(
     companion object {
         const val TYPE_MEMBER = "member"
         const val TYPE_SERVICE = "service"
+    }
+
+    /**
+     * Get the other user's ID (for 1-on-1 chats)
+     */
+    fun getOtherUserId(currentUserId: String): String? {
+        return participants.firstOrNull { it != currentUserId }
+    }
+
+    /**
+     * Get the other user's name
+     */
+    fun getOtherUserName(currentUserId: String): String {
+        val otherUserId = getOtherUserId(currentUserId) ?: return "Unknown"
+        return participantNames[otherUserId] ?: "Unknown User"
+    }
+
+    /**
+     * Get the other user's photo
+     */
+    fun getOtherUserPhoto(currentUserId: String): String {
+        val otherUserId = getOtherUserId(currentUserId) ?: return ""
+        return participantPhotos[otherUserId] ?: ""
+    }
+
+    /**
+     * Get the other user's role
+     */
+    fun getOtherUserRole(currentUserId: String): String {
+        val otherUserId = getOtherUserId(currentUserId) ?: return "member"
+        return participantRoles[otherUserId] ?: "member"
+    }
+
+    /**
+     * Get unread count for current user
+     */
+    fun getUnreadCount(currentUserId: String): Int {
+        return unreadCounts[currentUserId] ?: 0
+    }
+
+    /**
+     * Check if other user is typing
+     */
+    fun isOtherUserTyping(currentUserId: String): Boolean {
+        return typingUsers.any { it != currentUserId }
     }
 }
 

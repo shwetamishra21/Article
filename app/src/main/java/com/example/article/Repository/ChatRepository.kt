@@ -25,6 +25,8 @@ object ChatRepository {
         user2Name: String,
         user1Photo: String = "",
         user2Photo: String = "",
+        user1Role: String = "member",
+        user2Role: String = "member",
         type: String = ChatThread.TYPE_MEMBER,
         serviceRequestId: String? = null
     ): Result<String> {
@@ -55,6 +57,10 @@ object ChatRepository {
                 "participantPhotos" to mapOf(
                     userId1 to user1Photo,
                     userId2 to user2Photo
+                ),
+                "participantRoles" to mapOf(
+                    userId1 to user1Role,
+                    userId2 to user2Role
                 ),
                 "type" to type,
                 "title" to if (type == ChatThread.TYPE_SERVICE) "Service Chat" else "",
@@ -106,6 +112,9 @@ object ChatRepository {
                                 ?.mapKeys { it.key.toString() }
                                 ?.mapValues { it.value.toString() } ?: emptyMap(),
                             participantPhotos = (doc.get("participantPhotos") as? Map<*, *>)
+                                ?.mapKeys { it.key.toString() }
+                                ?.mapValues { it.value.toString() } ?: emptyMap(),
+                            participantRoles = (doc.get("participantRoles") as? Map<*, *>)
                                 ?.mapKeys { it.key.toString() }
                                 ?.mapValues { it.value.toString() } ?: emptyMap(),
                             type = doc.getString("type") ?: ChatThread.TYPE_MEMBER,
@@ -379,6 +388,58 @@ object ChatRepository {
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting chat", e)
+            Result.failure(e)
+        }
+    }
+
+    // ==================== GET CHAT INFO ====================
+
+    /**
+     * Get chat information
+     */
+    suspend fun getChatInfo(chatId: String): Result<ChatThread?> {
+        return try {
+            val doc = firestore.collection("chats")
+                .document(chatId)
+                .get()
+                .await()
+
+            if (!doc.exists()) {
+                return Result.success(null)
+            }
+
+            val chat = ChatThread(
+                id = doc.id,
+                participants = (doc.get("participants") as? List<*>)
+                    ?.mapNotNull { it as? String } ?: emptyList(),
+                participantNames = (doc.get("participantNames") as? Map<*, *>)
+                    ?.mapKeys { it.key.toString() }
+                    ?.mapValues { it.value.toString() } ?: emptyMap(),
+                participantPhotos = (doc.get("participantPhotos") as? Map<*, *>)
+                    ?.mapKeys { it.key.toString() }
+                    ?.mapValues { it.value.toString() } ?: emptyMap(),
+                participantRoles = (doc.get("participantRoles") as? Map<*, *>)
+                    ?.mapKeys { it.key.toString() }
+                    ?.mapValues { it.value.toString() } ?: emptyMap(),
+                type = doc.getString("type") ?: ChatThread.TYPE_MEMBER,
+                title = doc.getString("title") ?: "",
+                lastMessage = doc.getString("lastMessage") ?: "",
+                lastMessageSenderId = doc.getString("lastMessageSenderId") ?: "",
+                lastMessageAt = doc.getTimestamp("lastMessageAt") ?: Timestamp.now(),
+                unreadCounts = (doc.get("unreadCounts") as? Map<*, *>)
+                    ?.mapKeys { it.key.toString() }
+                    ?.mapValues { (it.value as? Long)?.toInt() ?: 0 } ?: emptyMap(),
+                typingUsers = (doc.get("typingUsers") as? List<*>)
+                    ?.mapNotNull { it as? String } ?: emptyList(),
+                createdAt = doc.getTimestamp("createdAt") ?: Timestamp.now(),
+                serviceRequestId = doc.getString("serviceRequestId"),
+                serviceType = doc.getString("serviceType"),
+                serviceStatus = doc.getString("serviceStatus")
+            )
+
+            Result.success(chat)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting chat info", e)
             Result.failure(e)
         }
     }

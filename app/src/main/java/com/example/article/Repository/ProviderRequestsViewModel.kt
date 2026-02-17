@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.article.UserSessionManager
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,11 +14,19 @@ class ProviderRequestsViewModel(
     private val repository: ServiceRequestRepository = ServiceRequestRepository()
 ) : ViewModel() {
 
+    // Provider's assigned requests (accepted / in_progress / completed)
     private val _requests = MutableStateFlow<List<ServiceRequest>>(emptyList())
     val requests: StateFlow<List<ServiceRequest>> = _requests.asStateFlow()
 
+    // Pending requests available to claim
+    private val _pendingRequests = MutableStateFlow<List<ServiceRequest>>(emptyList())
+    val pendingRequests: StateFlow<List<ServiceRequest>> = _pendingRequests.asStateFlow()
+
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
+
+    private val _pendingLoading = MutableStateFlow(false)
+    val pendingLoading: StateFlow<Boolean> = _pendingLoading.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
@@ -27,21 +36,18 @@ class ProviderRequestsViewModel(
     }
 
     /**
-     * Load all requests assigned to this provider
+     * Load all requests assigned to this provider (real-time).
      */
     fun loadRequests(providerId: String) {
         viewModelScope.launch {
+            _loading.value = true
             try {
-                _loading.value = true
-                _error.value = null
-
-                repository.getProviderRequests(providerId).collect { requestList ->
-                    _requests.value = requestList
+                repository.getProviderRequests(providerId).collect { list ->
+                    _requests.value = list
                     _loading.value = false
-                    Log.d(TAG, "Loaded ${requestList.size} requests")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error loading requests", e)
+                Log.e(TAG, "loadRequests error", e)
                 _error.value = e.message ?: "Failed to load requests"
                 _loading.value = false
             }
@@ -49,95 +55,81 @@ class ProviderRequestsViewModel(
     }
 
     /**
-     * Accept a pending request
+     * Load open/pending requests the provider can claim.
+     * Pass provider's service type to show only matching requests.
+     */
+    fun loadPendingRequests(serviceType: String? = null) {
+        viewModelScope.launch {
+            _pendingLoading.value = true
+            try {
+                repository.getPendingRequests(serviceType).collect { list ->
+                    _pendingRequests.value = list
+                    _pendingLoading.value = false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "loadPendingRequests error", e)
+                _error.value = e.message ?: "Failed to load available requests"
+                _pendingLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * Accept a pending request. Pulls provider info from UserSessionManager.
      */
     fun accept(requestId: String, providerId: String) {
         viewModelScope.launch {
-            try {
-                val currentUser = UserSessionManager.currentUser.value
-                val providerName = currentUser?.name ?: "Provider"
-
-                val result = repository.acceptRequest(requestId, providerId, providerName)
-
-                if (result.isFailure) {
-                    _error.value = "Failed to accept request"
-                    Log.e(TAG, "Accept failed", result.exceptionOrNull())
-                } else {
-                    Log.d(TAG, "Request $requestId accepted successfully")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error accepting request", e)
-                _error.value = e.message ?: "Failed to accept request"
+            val providerName = UserSessionManager.currentUser.value?.name
+                ?: FirebaseAuth.getInstance().currentUser?.displayName
+                ?: "Provider"
+            val result = repository.acceptRequest(requestId, providerId, providerName)
+            if (result.isFailure) {
+                val msg = result.exceptionOrNull()?.message ?: "Failed to accept request"
+                _error.value = msg
+                Log.e(TAG, "accept error: $msg")
+            } else {
+                Log.d(TAG, "Request $requestId accepted")
             }
         }
     }
 
     /**
-     * Start working on an accepted request
+     * Start working — transitions accepted → in_progress.
      */
     fun startWork(requestId: String) {
         viewModelScope.launch {
-            try {
-                val result = repository.startWork(requestId)
-
-                if (result.isFailure) {
-                    _error.value = "Failed to start work"
-                    Log.e(TAG, "Start work failed", result.exceptionOrNull())
-                } else {
-                    Log.d(TAG, "Work started on request $requestId")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error starting work", e)
-                _error.value = e.message ?: "Failed to start work"
+            val result = repository.startWork(requestId)
+            if (result.isFailure) {
+                _error.value = result.exceptionOrNull()?.message ?: "Failed to start work"
+                Log.e(TAG, "startWork error", result.exceptionOrNull())
             }
         }
     }
 
     /**
-     * Complete a request
+     * Mark request as completed.
      */
     fun complete(requestId: String, providerId: String) {
         viewModelScope.launch {
-            try {
-                val result = repository.completeRequest(requestId)
-
-                if (result.isFailure) {
-                    _error.value = "Failed to complete request"
-                    Log.e(TAG, "Complete failed", result.exceptionOrNull())
-                } else {
-                    Log.d(TAG, "Request $requestId completed successfully")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error completing request", e)
-                _error.value = e.message ?: "Failed to complete request"
+            val result = repository.completeRequest(requestId)
+            if (result.isFailure) {
+                _error.value = result.exceptionOrNull()?.message ?: "Failed to complete request"
+                Log.e(TAG, "complete error", result.exceptionOrNull())
             }
         }
     }
-
     /**
-     * Decline a request
+     * Decline an accepted/in_progress request — resets it to pending.
      */
     fun decline(requestId: String) {
         viewModelScope.launch {
-            try {
-                val result = repository.declineRequest(requestId, byProvider = true)
-
-                if (result.isFailure) {
-                    _error.value = "Failed to decline request"
-                    Log.e(TAG, "Decline failed", result.exceptionOrNull())
-                } else {
-                    Log.d(TAG, "Request $requestId declined successfully")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error declining request", e)
-                _error.value = e.message ?: "Failed to decline request"
+            val result = repository.declineRequest(requestId, byProvider = true)
+            if (result.isFailure) {
+                _error.value = result.exceptionOrNull()?.message ?: "Failed to decline request"
+                Log.e(TAG, "decline error", result.exceptionOrNull())
             }
         }
     }
-
-    /**
-     * Clear error message
-     */
     fun clearError() {
         _error.value = null
     }

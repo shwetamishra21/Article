@@ -1,5 +1,6 @@
 package com.example.article.chat
 
+import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -9,6 +10,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,9 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -42,15 +43,25 @@ fun EnhancedChatScreen(
     otherUserPhoto: String = "",
     viewModel: ChatViewModel = viewModel()
 ) {
-    android.util.Log.d("EnhancedChatScreen", "=== CHAT SCREEN OPENED ===")
-    android.util.Log.d("EnhancedChatScreen", "chatId: $chatId")
-    android.util.Log.d("EnhancedChatScreen", "otherUserId: $otherUserId")
-    android.util.Log.d("EnhancedChatScreen", "otherUserName: $otherUserName")
-    android.util.Log.d("EnhancedChatScreen", "otherUserPhoto: $otherUserPhoto")
+    // Decode URL-encoded parameters and handle 'none'
+    val decodedUserName = remember {
+        try {
+            Uri.decode(otherUserName)
+        } catch (e: Exception) {
+            otherUserName
+        }
+    }
 
-    // State for user info loaded from Firestore
-    var loadedUserName by remember { mutableStateOf(otherUserName) }
-    var loadedUserPhoto by remember { mutableStateOf(otherUserPhoto) }
+    val decodedUserPhoto = remember {
+        try {
+            val decoded = Uri.decode(otherUserPhoto)
+            if (decoded == "none" || decoded.isBlank()) "" else decoded
+        } catch (e: Exception) {
+            if (otherUserPhoto == "none") "" else otherUserPhoto
+        }
+    }
+
+    android.util.Log.d("EnhancedChatScreen", "Chat opened: $chatId")
 
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
@@ -64,44 +75,15 @@ fun EnhancedChatScreen(
     val currentUserName = currentUser.displayName ?: currentUser.email ?: "You"
     val currentUserPhoto = currentUser.photoUrl?.toString() ?: ""
 
-    // Load user info from chat if parameters are empty
     LaunchedEffect(chatId) {
-        android.util.Log.d("EnhancedChatScreen", "LaunchedEffect triggered for chatId: $chatId")
-
-        if (loadedUserName.isEmpty() || loadedUserName == "null" || loadedUserName == "loading") {
-            android.util.Log.d("EnhancedChatScreen", "Loading user data from Firestore...")
-            try {
-                val chatDoc = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                    .collection("chats")
-                    .document(chatId)
-                    .get()
-                    .await()
-
-                android.util.Log.d("EnhancedChatScreen", "Chat doc loaded: ${chatDoc.exists()}")
-
-                val participantNames = chatDoc.get("participantNames") as? Map<*, *>
-                val participantPhotos = chatDoc.get("participantPhotos") as? Map<*, *>
-
-                loadedUserName = participantNames?.get(otherUserId)?.toString() ?: "User"
-                loadedUserPhoto = participantPhotos?.get(otherUserId)?.toString() ?: ""
-
-                android.util.Log.d("EnhancedChatScreen", "Loaded name: $loadedUserName, photo: $loadedUserPhoto")
-            } catch (e: Exception) {
-                android.util.Log.e("EnhancedChatScreen", "Error loading user data", e)
-                loadedUserName = "User"
-            }
-        }
-
-        android.util.Log.d("EnhancedChatScreen", "Starting to observe messages...")
         viewModel.observeMessages(
             chatId = chatId,
             currentUserId = currentUserId,
-            otherUserName = loadedUserName,
-            otherUserPhoto = loadedUserPhoto
+            otherUserName = decodedUserName,
+            otherUserPhoto = decodedUserPhoto
         )
     }
 
-    // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
             scope.launch {
@@ -118,10 +100,9 @@ fun EnhancedChatScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Profile picture
-                        if (loadedUserPhoto.isNotEmpty()) {
+                        if (decodedUserPhoto.isNotEmpty()) {
                             AsyncImage(
-                                model = loadedUserPhoto,
+                                model = decodedUserPhoto,
                                 contentDescription = null,
                                 modifier = Modifier
                                     .size(36.dp)
@@ -136,7 +117,7 @@ fun EnhancedChatScreen(
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
-                                        text = loadedUserName.firstOrNull()?.uppercase() ?: "?",
+                                        text = decodedUserName.firstOrNull()?.uppercase() ?: "?",
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF42A5F5)
                                     )
@@ -146,13 +127,12 @@ fun EnhancedChatScreen(
 
                         Column {
                             Text(
-                                text = loadedUserName,
+                                text = decodedUserName,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.White
                             )
 
-                            // Typing indicator
                             AnimatedVisibility(
                                 visible = uiState.typingUsers.isNotEmpty(),
                                 enter = fadeIn() + expandVertically(),
@@ -171,7 +151,7 @@ fun EnhancedChatScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
-                            Icons.Default.ArrowBack,
+                            Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
                             tint = Color.White
                         )
@@ -202,7 +182,6 @@ fun EnhancedChatScreen(
                 .padding(padding)
                 .background(Color(0xFFFAFAFA))
         ) {
-            // Messages List
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -257,7 +236,7 @@ fun EnhancedChatScreen(
                                         color = Color(0xFF666666)
                                     )
                                     Text(
-                                        "Say hi to ${otherUserName}!",
+                                        "Say hi to $decodedUserName!",
                                         fontSize = 14.sp,
                                         color = Color(0xFF999999)
                                     )
@@ -288,7 +267,6 @@ fun EnhancedChatScreen(
                 }
             }
 
-            // Input Area
             Surface(
                 tonalElevation = 3.dp,
                 shadowElevation = 2.dp,
@@ -302,13 +280,11 @@ fun EnhancedChatScreen(
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Message Input
                     OutlinedTextField(
                         value = messageText,
                         onValueChange = { newText ->
                             messageText = newText
 
-                            // Typing indicator logic
                             val now = System.currentTimeMillis()
                             if (newText.isNotBlank() && now - lastTypingTime > 1000) {
                                 viewModel.onTyping(chatId, currentUserId)
@@ -320,7 +296,7 @@ fun EnhancedChatScreen(
                         modifier = Modifier.weight(1f),
                         placeholder = {
                             Text(
-                                text = "Message ${otherUserName}...",
+                                text = "Message...",
                                 color = Color(0xFF666666).copy(alpha = 0.6f),
                                 fontSize = 15.sp
                             )
@@ -337,7 +313,6 @@ fun EnhancedChatScreen(
                         textStyle = LocalTextStyle.current.copy(fontSize = 15.sp)
                     )
 
-                    // Send Button
                     IconButton(
                         onClick = {
                             if (messageText.isNotBlank()) {
@@ -375,7 +350,7 @@ fun EnhancedChatScreen(
                             )
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Send,
+                            imageVector = Icons.AutoMirrored.Filled.Send,
                             contentDescription = "Send",
                             tint = if (messageText.isNotBlank())
                                 Color.White
@@ -386,6 +361,13 @@ fun EnhancedChatScreen(
                     }
                 }
             }
+        }
+    }
+
+    uiState.error?.let { error ->
+        LaunchedEffect(error) {
+            android.util.Log.e("EnhancedChatScreen", "Error: $error")
+            viewModel.clearError()
         }
     }
 }
@@ -452,7 +434,6 @@ private fun MessageBubble(
             }
         }
 
-        // Timestamp + Read Receipt
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
