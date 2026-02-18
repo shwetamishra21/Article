@@ -279,23 +279,40 @@ private fun PendingRequestCard(
         ) {
             // Header
             Row(
-                Modifier.fillMaxWidth(),
-                Arrangement.SpaceBetween,
-                Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(Arrangement.spacedBy(12.dp), Alignment.CenterVertically) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     AvatarCircle(request.memberName, 40)
                     Column {
-                        Text(request.memberName, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = OnSurfaceLight)
-                        Text(request.serviceType, fontSize = 12.sp, color = Color(0xFF666666))
+                        Text(
+                            request.memberName,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = OnSurfaceLight
+                        )
+                        Text(
+                            request.serviceType,
+                            fontSize = 12.sp,
+                            color = Color(0xFF666666)
+                        )
                     }
                 }
-                Surface(RoundedCornerShape(6.dp), color = Color(0xFFFF9800).copy(alpha = 0.15f)) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFFFF9800).copy(alpha = 0.15f)
+                ) {
                     Text(
                         "NEW",
-                        Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFF9800), letterSpacing = 0.5.sp
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFF9800),
+                        letterSpacing = 0.5.sp
                     )
                 }
             }
@@ -310,12 +327,18 @@ private fun PendingRequestCard(
 
             if (request.description.isNotEmpty()) {
                 Text(
-                    request.description, fontSize = 14.sp,
-                    color = OnSurfaceLight.copy(alpha = 0.8f), lineHeight = 20.sp, maxLines = 3
+                    request.description,
+                    fontSize = 14.sp,
+                    color = OnSurfaceLight.copy(alpha = 0.8f),
+                    lineHeight = 20.sp,
+                    maxLines = 3
                 )
             }
 
-            Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 request.preferredDate?.let {
                     InfoChip(Icons.Default.CalendarToday, formatDate(it.toDate().time))
                 }
@@ -333,13 +356,25 @@ private fun PendingRequestCard(
                 enabled = !accepting
             ) {
                 if (accepting) {
-                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
                     Spacer(Modifier.width(8.dp))
-                    Text("Accepting…", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Accepting…",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 } else {
                     Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Accept Request", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Accept Request",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }
@@ -372,12 +407,28 @@ private fun ProviderRequestCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Header
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Row(Arrangement.spacedBy(12.dp), Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     AvatarCircle(request.memberName, 40)
                     Column {
-                        Text(request.memberName, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = OnSurfaceLight)
-                        Text(request.serviceType, fontSize = 13.sp, color = Color(0xFF666666))
+                        Text(
+                            request.memberName,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = OnSurfaceLight
+                        )
+                        Text(
+                            request.serviceType,
+                            fontSize = 13.sp,
+                            color = Color(0xFF666666)
+                        )
                     }
                 }
                 StatusBadge(request.status)
@@ -388,18 +439,28 @@ private fun ProviderRequestCard(
             }
 
             if (request.title.isNotEmpty()) {
-                Text(request.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = OnSurfaceLight)
+                Text(
+                    request.title,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = OnSurfaceLight
+                )
             }
 
             if (request.description.isNotEmpty()) {
                 Text(
-                    request.description, fontSize = 14.sp,
-                    color = OnSurfaceLight.copy(alpha = 0.8f), lineHeight = 20.sp
+                    request.description,
+                    fontSize = 14.sp,
+                    color = OnSurfaceLight.copy(alpha = 0.8f),
+                    lineHeight = 20.sp
                 )
             }
 
             // Date / time chips
-            Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 request.preferredDate?.let {
                     InfoChip(Icons.Default.CalendarToday, formatDate(it.toDate().time))
                 }
@@ -441,13 +502,21 @@ private fun ProviderRequestCard(
                             enabled = !beginningWork
                         ) {
                             if (beginningWork) {
-                                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Color.White)
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.White
+                                )
                                 Spacer(Modifier.width(6.dp))
                                 Text("Starting…", fontSize = 14.sp)
                             } else {
                                 Icon(Icons.Default.PlayArrow, null, Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("Begin Work", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "Begin Work",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
                         }
                     }
@@ -484,13 +553,25 @@ private fun ProviderRequestCard(
                         enabled = !completing
                     ) {
                         if (completing) {
-                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.White
+                            )
                             Spacer(Modifier.width(8.dp))
-                            Text("Completing…", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Completing…",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         } else {
                             Icon(Icons.Default.CheckCircle, null, Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Mark as Complete", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Mark as Complete",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
                     }
                 }
@@ -509,37 +590,78 @@ private fun ProviderRequestCard(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                null,
+                                tint = Color(0xFF4CAF50),
+                                modifier = Modifier.size(20.dp)
+                            )
                             Column {
-                                Text("Job Completed", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF4CAF50))
+                                Text(
+                                    "Job Completed",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF4CAF50)
+                                )
                                 request.completedAt?.let {
-                                    Text(formatDate(it.toDate().time), fontSize = 12.sp, color = Color(0xFF666666))
+                                    Text(
+                                        formatDate(it.toDate().time),
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF666666)
+                                    )
                                 }
                             }
                         }
                     }
 
                     if (request.rating != null) {
-                        HorizontalDivider(thickness = 1.dp, color = Color(0xFFFFC107).copy(alpha = 0.3f))
+                        HorizontalDivider(
+                            thickness = 1.dp,
+                            color = Color(0xFFFFC107).copy(alpha = 0.3f)
+                        )
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Member's Rating", fontSize = 11.sp, color = Color(0xFF999999), fontWeight = FontWeight.Medium)
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Member's Rating",
+                                fontSize = 11.sp,
+                                color = Color(0xFF999999),
+                                fontWeight = FontWeight.Medium
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 repeat(5) { i ->
                                     Icon(
                                         if (i < request.rating.toInt()) Icons.Default.Star else Icons.Default.StarBorder,
-                                        null, Modifier.size(16.dp),
-                                        if (i < request.rating.toInt()) Color(0xFFFFC107) else Color(0xFFCCCCCC)
+                                        null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = if (i < request.rating.toInt()) Color(0xFFFFC107) else Color(0xFFCCCCCC)
                                     )
                                 }
                                 Spacer(Modifier.width(4.dp))
-                                Text("${request.rating.toInt()} / 5", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF666666))
+                                Text(
+                                    "${request.rating.toInt()} / 5",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF666666)
+                                )
                             }
                             if (!request.review.isNullOrBlank()) {
-                                Text("\"${request.review}\"", fontSize = 13.sp, color = Color(0xFF666666), lineHeight = 18.sp, fontStyle = FontStyle.Italic)
+                                Text(
+                                    "\"${request.review}\"",
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF666666),
+                                    lineHeight = 18.sp,
+                                    fontStyle = FontStyle.Italic
+                                )
                             }
                         }
                     } else {
-                        Text("Awaiting member rating…", fontSize = 12.sp, color = Color(0xFF999999))
+                        Text(
+                            "Awaiting member rating…",
+                            fontSize = 12.sp,
+                            color = Color(0xFF999999)
+                        )
                     }
                 }
             }
@@ -558,11 +680,17 @@ private fun ProviderRequestCard(
             },
             confirmButton = {
                 TextButton(onClick = { onDecline(); showDeclineDialog = false }) {
-                    Text("Yes, Decline", color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold)
+                    Text(
+                        "Yes, Decline",
+                        color = Color(0xFFD32F2F),
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeclineDialog = false }) { Text("Keep Job") }
+                TextButton(onClick = { showDeclineDialog = false }) {
+                    Text("Keep Job")
+                }
             },
             shape = RoundedCornerShape(16.dp)
         )
@@ -593,8 +721,16 @@ private fun AvatarCircle(name: String, sizeDp: Int) {
 
 @Composable
 private fun IconText(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(13.dp), Color(0xFF999999))
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            icon,
+            null,
+            modifier = Modifier.size(13.dp),
+            tint = Color(0xFF999999)
+        )
         Text(text, fontSize = 12.sp, color = Color(0xFF999999))
     }
 }
@@ -611,16 +747,28 @@ private fun StatusBadge(status: String) {
     }
     Surface(shape = RoundedCornerShape(6.dp), color = color.copy(alpha = 0.15f)) {
         Text(
-            label, Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            fontSize = 11.sp, fontWeight = FontWeight.Bold, color = color, letterSpacing = 0.5.sp
+            label,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = color,
+            letterSpacing = 0.5.sp
         )
     }
 }
 
 @Composable
 private fun InfoChip(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(16.dp), Color(0xFF666666))
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            icon,
+            null,
+            modifier = Modifier.size(16.dp),
+            tint = Color(0xFF666666)
+        )
         Text(text, fontSize = 13.sp, color = Color(0xFF666666))
     }
 }

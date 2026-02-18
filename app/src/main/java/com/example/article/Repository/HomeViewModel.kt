@@ -11,7 +11,7 @@ import com.example.article.Repository.LikeRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import com. example. article. CommentRepository
+import com.example.article.CommentRepository
 
 class HomeViewModel : ViewModel() {
 
@@ -28,8 +28,6 @@ class HomeViewModel : ViewModel() {
 
     private val PAGE_SIZE = 20
 
-    /* ---------- LOAD FEED ---------- */
-
     fun loadFeed() {
         if (listener != null) return
 
@@ -41,8 +39,7 @@ class HomeViewModel : ViewModel() {
             .addSnapshotListener { snapshot, error ->
 
                 if (error != null) {
-                    _uiState.value =
-                        UiState.Error(error.message ?: "Firestore error")
+                    _uiState.value = UiState.Error(error.message ?: "Firestore error")
                     return@addSnapshotListener
                 }
 
@@ -53,20 +50,13 @@ class HomeViewModel : ViewModel() {
                 }
 
                 val items = snapshot.documents.mapNotNull { doc ->
-                    try {
-                        mapDoc(doc)
-                    } catch (_: Exception) {
-                        null
-                    }
+                    try { mapDoc(doc) } catch (_: Exception) { null }
                 }
 
                 lastVisible = snapshot.documents.lastOrNull()
-
                 _uiState.value = UiState.Success(items)
             }
     }
-
-    /* ---------- PAGINATION ---------- */
 
     fun loadMore() {
         val last = lastVisible ?: return
@@ -95,8 +85,6 @@ class HomeViewModel : ViewModel() {
             }
     }
 
-    /* ---------- OPTIMISTIC LIKE ---------- */
-
     fun toggleLikeOptimistic(postId: String) {
         val current = (_uiState.value as? UiState.Success)?.data ?: return
         val updated = current.map {
@@ -116,32 +104,43 @@ class HomeViewModel : ViewModel() {
             postId = postId,
             isCurrentlyLiked = currentlyLiked,
             onSuccess = {},
-            onError = { toggleLikeOptimistic(postId) } // Rollback
+            onError = { toggleLikeOptimistic(postId) }
         )
     }
 
-
-    /* ---------- DELETE ---------- */
-
     fun deletePost(postId: String) {
         viewModelScope.launch {
+            // Stop listener so it doesn't immediately restore the deleted doc
+            listener?.remove()
+            listener = null
+
             repository.deletePost(postId)
-            val current = (_uiState.value as? UiState.Success)?.data ?: return@launch
-            _uiState.value =
-                UiState.Success(current.filterNot { it is FeedItem.Post && it.id == postId })
+
+            val current = (_uiState.value as? UiState.Success)?.data ?: emptyList()
+            _uiState.value = UiState.Success(
+                current.filterNot { it is FeedItem.Post && it.id == postId }
+            )
+
+            // Restart listener
+            loadFeed()
         }
     }
 
     fun deleteAnnouncement(announcementId: String) {
         viewModelScope.launch {
+            listener?.remove()
+            listener = null
+
             repository.deleteAnnouncement(announcementId)
-            val current = (_uiState.value as? UiState.Success)?.data ?: return@launch
-            _uiState.value =
-                UiState.Success(current.filterNot { it is FeedItem.Announcement && it.id == announcementId })
+
+            val current = (_uiState.value as? UiState.Success)?.data ?: emptyList()
+            _uiState.value = UiState.Success(
+                current.filterNot { it is FeedItem.Announcement && it.id == announcementId }
+            )
+
+            loadFeed()
         }
     }
-
-    /* ---------- REFRESH ---------- */
 
     fun refreshFeed() {
         listener?.remove()
@@ -149,9 +148,8 @@ class HomeViewModel : ViewModel() {
         lastVisible = null
         loadFeed()
     }
-    /* ---------- COMMENTS (add these) ---------- */
+
     fun addComment(postId: String, authorId: String, author: String, text: String) {
-        // Optimistic UI update
         val current = (_uiState.value as? UiState.Success)?.data ?: return
         val updated = current.map {
             if (it is FeedItem.Post && it.id == postId) {
@@ -164,11 +162,10 @@ class HomeViewModel : ViewModel() {
             postId = postId,
             authorId = authorId,
             authorName = author,
-            authorPhotoUrl = "", // if not available here
+            authorPhotoUrl = "",
             content = text,
             onComplete = {},
-            onError = { msg ->
-                // Rollback on error
+            onError = {
                 val rollback = current.map {
                     if (it is FeedItem.Post && it.id == postId) {
                         it.copy(commentCount = it.commentCount - 1)
@@ -179,27 +176,16 @@ class HomeViewModel : ViewModel() {
         )
     }
 
-
-    /* ---------- MAPPER ---------- */
-
     private fun mapDoc(doc: DocumentSnapshot): FeedItem? {
-
         val type = doc.getString("type") ?: return null
-
         val createdAt = doc.getTimestamp("createdAt")
         val time = createdAt?.toDate()?.time ?: 0L
-
         val currentUid = auth.currentUser?.uid
 
         return when (type) {
-
             "post" -> {
-
-                val likedBy =
-                    doc.get("likedBy") as? Map<*, *> ?: emptyMap<Any, Any>()
-
-                val likedByMe =
-                    currentUid != null && likedBy.containsKey(currentUid)
+                val likedBy = doc.get("likedBy") as? Map<*, *> ?: emptyMap<Any, Any>()
+                val likedByMe = currentUid != null && likedBy.containsKey(currentUid)
 
                 FeedItem.Post(
                     id = doc.id,
@@ -211,7 +197,7 @@ class HomeViewModel : ViewModel() {
                     commentCount = (doc.getLong("commentCount") ?: 0L).toInt(),
                     likedByMe = likedByMe,
                     imageUrl = doc.getString("imageUrl"),
-                    authorPhotoUrl = doc.getString("authorPhotoUrl") // NEW
+                    authorPhotoUrl = doc.getString("authorPhotoUrl")
                 )
             }
 
@@ -226,14 +212,13 @@ class HomeViewModel : ViewModel() {
         }
     }
 
+    fun addOptimistic(item: FeedItem) {
+        val current = (_uiState.value as? UiState.Success)?.data ?: emptyList()
+        _uiState.value = UiState.Success(listOf(item) + current)
+    }
 
     override fun onCleared() {
         listener?.remove()
         super.onCleared()
-    }
-
-    fun addOptimistic(item: FeedItem) {
-        val current = (_uiState.value as? UiState.Success)?.data ?: emptyList()
-        _uiState.value = UiState.Success(listOf(item) + current)
     }
 }

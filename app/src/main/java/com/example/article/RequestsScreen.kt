@@ -50,11 +50,17 @@ fun RequestsScreen(
     var showProviderSheet by remember { mutableStateOf(false) }
     var selectedProviderIdForSheet by remember { mutableStateOf<String?>(null) }
 
-    // Load member requests
+    // Load member requests on first entry
     LaunchedEffect(userId) {
         userId?.let {
             viewModel.loadMemberRequests(it)
         }
+    }
+
+    // NEW: refresh whenever the screen recomposes (e.g. returning from provider screen)
+    // so provider status changes (completed, in_progress etc.) are picked up immediately
+    LaunchedEffect(Unit) {
+        viewModel.refreshRequests()
     }
 
     // Auto-dismiss error after 3 seconds
@@ -316,34 +322,34 @@ private fun RequestCard(
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = when (request.status) {
-                        ServiceRequest.STATUS_PENDING -> Color(0xFFFF9800).copy(alpha = 0.15f)
-                        ServiceRequest.STATUS_ACCEPTED -> Color(0xFF4CAF50).copy(alpha = 0.15f)
+                        ServiceRequest.STATUS_PENDING     -> Color(0xFFFF9800).copy(alpha = 0.15f)
+                        ServiceRequest.STATUS_ACCEPTED    -> Color(0xFF4CAF50).copy(alpha = 0.15f)
                         ServiceRequest.STATUS_IN_PROGRESS -> Color(0xFF2196F3).copy(alpha = 0.15f)
-                        ServiceRequest.STATUS_COMPLETED -> Color(0xFF4CAF50).copy(alpha = 0.15f)
-                        ServiceRequest.STATUS_CANCELLED -> Color(0xFFB71C1C).copy(alpha = 0.15f)
-                        else -> Color(0xFF666666).copy(alpha = 0.15f)
+                        ServiceRequest.STATUS_COMPLETED   -> Color(0xFF4CAF50).copy(alpha = 0.15f)
+                        ServiceRequest.STATUS_CANCELLED   -> Color(0xFFB71C1C).copy(alpha = 0.15f)
+                        else                              -> Color(0xFF666666).copy(alpha = 0.15f)
                     },
                     shadowElevation = 1.dp
                 ) {
                     Text(
                         text = when (request.status) {
-                            ServiceRequest.STATUS_PENDING -> "Pending"
-                            ServiceRequest.STATUS_ACCEPTED -> "Accepted"
+                            ServiceRequest.STATUS_PENDING     -> "Pending"
+                            ServiceRequest.STATUS_ACCEPTED    -> "Accepted"
                             ServiceRequest.STATUS_IN_PROGRESS -> "In Progress"
-                            ServiceRequest.STATUS_COMPLETED -> "Completed"
-                            ServiceRequest.STATUS_CANCELLED -> "Cancelled"
-                            else -> request.status
+                            ServiceRequest.STATUS_COMPLETED   -> "Completed"
+                            ServiceRequest.STATUS_CANCELLED   -> "Cancelled"
+                            else                              -> request.status
                         },
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = when (request.status) {
-                            ServiceRequest.STATUS_PENDING -> Color(0xFFFF9800)
-                            ServiceRequest.STATUS_ACCEPTED -> Color(0xFF4CAF50)
+                            ServiceRequest.STATUS_PENDING     -> Color(0xFFFF9800)
+                            ServiceRequest.STATUS_ACCEPTED    -> Color(0xFF4CAF50)
                             ServiceRequest.STATUS_IN_PROGRESS -> Color(0xFF2196F3)
-                            ServiceRequest.STATUS_COMPLETED -> Color(0xFF4CAF50)
-                            ServiceRequest.STATUS_CANCELLED -> Color(0xFFB71C1C)
-                            else -> Color(0xFF666666)
+                            ServiceRequest.STATUS_COMPLETED   -> Color(0xFF4CAF50)
+                            ServiceRequest.STATUS_CANCELLED   -> Color(0xFFB71C1C)
+                            else                              -> Color(0xFF666666)
                         }
                     )
                 }
@@ -590,7 +596,7 @@ private fun RequestCard(
                 }
             }
 
-            // ── Cancel button: pending OR accepted (not started yet) ──────────
+            // ── Cancel button: pending OR accepted (not started yet) ────────
             if (request.status == ServiceRequest.STATUS_PENDING ||
                 request.status == ServiceRequest.STATUS_ACCEPTED) {
                 HorizontalDivider(
@@ -713,10 +719,10 @@ private fun RatingDialog(
                 if (selectedRating > 0) {
                     Text(
                         text = when (selectedRating) {
-                            1 -> "😞 Poor"
-                            2 -> "😐 Fair"
-                            3 -> "🙂 Good"
-                            4 -> "😊 Very Good"
+                            1    -> "😞 Poor"
+                            2    -> "😐 Fair"
+                            3    -> "🙂 Good"
+                            4    -> "😊 Very Good"
                             else -> "🌟 Excellent!"
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -724,10 +730,10 @@ private fun RatingDialog(
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = when (selectedRating) {
-                            1 -> Color(0xFFD32F2F)
-                            2 -> Color(0xFFFF9800)
-                            3 -> Color(0xFF2196F3)
-                            4 -> Color(0xFF4CAF50)
+                            1    -> Color(0xFFD32F2F)
+                            2    -> Color(0xFFFF9800)
+                            3    -> Color(0xFF2196F3)
+                            4    -> Color(0xFF4CAF50)
                             else -> Color(0xFF4CAF50)
                         }
                     )
@@ -768,8 +774,8 @@ private fun RatingDialog(
 @Composable
 private fun EmptyRequestsState(onCreateNew: () -> Unit, tab: Int = 0) {
     val (emoji, title, subtitle) = when (tab) {
-        1 -> Triple("📋", "No active requests", "All your requests are resolved!")
-        2 -> Triple("✅", "No completed requests yet", "Completed jobs will appear here")
+        1    -> Triple("📋", "No active requests", "All your requests are resolved!")
+        2    -> Triple("✅", "No completed requests yet", "Completed jobs will appear here")
         else -> Triple("📋", "No service requests", "Create your first request to get started")
     }
 

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import com.example.article.admin.MemberManagementScreen
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,7 +29,6 @@ import com.example.article.admin.AdminBottomBar
 import com.example.article.admin.AdminDashboardScreen
 import com.example.article.admin.AnnouncementManagementScreen
 import com.example.article.admin.ContentModerationScreen
-import com.example.article.admin.MemberManagementScreen
 import com.example.article.admin.ProviderApprovalScreen
 import com.example.article.provider.ProviderBottomBar
 import com.example.article.provider.ProviderInboxScreen

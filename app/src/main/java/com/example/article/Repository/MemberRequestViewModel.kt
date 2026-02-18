@@ -5,8 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.article.UserSessionManager
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,15 +32,20 @@ class MemberRequestViewModel(
     private val _submitSuccess = MutableStateFlow(false)
     val submitSuccess: StateFlow<Boolean> = _submitSuccess.asStateFlow()
 
+    private var listenerJob: Job? = null
+    private var currentMemberId: String? = null
+
     companion object {
         private const val TAG = "MemberRequestVM"
     }
 
-    /**
-     * Start a real-time stream of this member's requests.
-     */
     fun loadMemberRequests(memberId: String) {
-        viewModelScope.launch {
+        if (memberId == currentMemberId && listenerJob?.isActive == true) return
+
+        currentMemberId = memberId
+        listenerJob?.cancel()
+
+        listenerJob = viewModelScope.launch {
             _loading.value = true
             try {
                 repository.getMemberRequests(memberId).collect { list ->
@@ -53,10 +60,14 @@ class MemberRequestViewModel(
         }
     }
 
-    /**
-     * Create a new service request.
-     * Pulls member info from UserSessionManager automatically.
-     */
+    fun refreshRequests() {
+        currentMemberId?.let { memberId ->
+            listenerJob?.cancel()
+            currentMemberId = null
+            loadMemberRequests(memberId)
+        }
+    }
+
     fun createRequest(
         title: String,
         description: String,
@@ -68,8 +79,6 @@ class MemberRequestViewModel(
             _loading.value = true
             _error.value = null
 
-            // Resolve member identity from FirebaseAuth (uid) + UserSessionManager (name)
-            // and neighbourhood from Firestore — consistent with how every other screen works
             val firebaseUser = FirebaseAuth.getInstance().currentUser
             if (firebaseUser == null) {
                 _error.value = "You must be logged in to create a request"
@@ -82,7 +91,6 @@ class MemberRequestViewModel(
                 ?: firebaseUser.displayName
                 ?: "Member"
 
-            // Load neighbourhood from Firestore (non-critical — empty string if missing)
             val memberNeighborhood = try {
                 FirebaseFirestore.getInstance()
                     .collection("users")
@@ -123,15 +131,10 @@ class MemberRequestViewModel(
         }
     }
 
-    /**
-     * Cancel a request owned by this member.
-     * Allowed for: pending and accepted (but not in_progress or completed).
-     */
     fun cancelRequest(requestId: String) {
         viewModelScope.launch {
             val memberId = FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
 
-            // Guard client-side — repo also enforces this server-side
             val request = _requests.value.find { it.id == requestId }
             if (request != null &&
                 request.status != ServiceRequest.STATUS_PENDING &&
@@ -149,29 +152,85 @@ class MemberRequestViewModel(
         }
     }
 
-    /**
-     * Rate a completed request.
-     */
     fun rateRequest(requestId: String, rating: Float, review: String) {
         viewModelScope.launch {
-            val memberId = FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
-            val result = repository.rateRequest(requestId, memberId, rating, review)
-            if (result.isFailure) {
-                _error.value = result.exceptionOrNull()?.message ?: "Failed to submit rating"
-                Log.e(TAG, "rateRequest error", result.exceptionOrNull())
+            _loading.value = true
+            try {
+                val firestore = FirebaseFirestore.getInstance()
+
+                val requestDoc = firestore.collection("service_requests")
+                    .document(requestId)
+                    .get()
+                    .await()
+
+                val providerId = requestDoc.getString("providerId")
+                if (providerId == null) {
+                    _error.value = "No provider assigned to this request"
+                    return@launch
+                }
+
+                firestore.collection("service_requests")
+                    .document(requestId)
+                    .update(
+                        mapOf(
+                            "rating" to rating,
+                            "review" to review,
+                            "ratedAt" to FieldValue.serverTimestamp()
+                        )
+                    )
+                    .await()
+
+                recalculateProviderRating(providerId)
+                refreshRequests()
+
+            } catch (e: Exception) {
+                _error.value = "Failed to submit rating: ${e.message}"
+                Log.e(TAG, "rateRequest error", e)
+            } finally {
+                _loading.value = false
             }
         }
     }
 
-    fun setError(msg: String) {
-        _error.value = msg
+    private suspend fun recalculateProviderRating(providerId: String) {
+        try {
+            val firestore = FirebaseFirestore.getInstance()
+
+            val completedRequests = firestore.collection("service_requests")
+                .whereEqualTo("providerId", providerId)
+                .whereEqualTo("status", "completed")
+                .get()
+                .await()
+
+            val ratings = completedRequests.documents
+                .mapNotNull { doc -> doc.getDouble("rating")?.toFloat() }
+
+            if (ratings.isNotEmpty()) {
+                val averageRating = ratings.average().toFloat()
+                val ratingCount = ratings.size
+
+                firestore.collection("users")
+                    .document(providerId)
+                    .update(
+                        mapOf(
+                            "averageRating" to averageRating,
+                            "ratingCount" to ratingCount,
+                            "lastRatingUpdate" to FieldValue.serverTimestamp()
+                        )
+                    )
+                    .await()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to recalculate provider rating", e)
+        }
     }
 
-    fun clearError() {
-        _error.value = null
-    }
+    fun setError(msg: String) { _error.value = msg }
+    fun clearError() { _error.value = null }
+    fun clearSubmitSuccess() { _submitSuccess.value = false }
 
-    fun clearSubmitSuccess() {
-        _submitSuccess.value = false
+    override fun onCleared() {
+        super.onCleared()
+        listenerJob?.cancel()
     }
 }

@@ -566,8 +566,9 @@ private fun PostCard(
     var showMenu by remember { mutableStateOf(false) }
 
     val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+    val currentUserRole = UserSessionManager.currentUser.collectAsState().value?.role
+    val canDelete = currentUserId == item.authorId || currentUserRole == "admin"
 
-    // Use authorPhotoUrl from FeedItem directly
     val userName = item.author
     val userPhotoUrl = item.authorPhotoUrl
 
@@ -654,7 +655,7 @@ private fun PostCard(
                 }
 
                 DropdownMenu(showMenu, { showMenu = false }) {
-                    if (currentUserId == item.authorId) {
+                    if (canDelete) {
                         DropdownMenuItem(
                             text = { Text("Delete", fontSize = 14.sp, fontWeight = FontWeight.Medium) },
                             onClick = {
