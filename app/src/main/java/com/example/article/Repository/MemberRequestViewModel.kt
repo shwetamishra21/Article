@@ -155,6 +155,7 @@ class MemberRequestViewModel(
     fun rateRequest(requestId: String, rating: Float, review: String) {
         viewModelScope.launch {
             _loading.value = true
+
             try {
                 val firestore = FirebaseFirestore.getInstance()
 
