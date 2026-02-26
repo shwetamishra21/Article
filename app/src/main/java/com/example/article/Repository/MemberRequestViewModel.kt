@@ -156,6 +156,7 @@ class MemberRequestViewModel(
         viewModelScope.launch {
             _loading.value = true
 
+
             try {
                 val firestore = FirebaseFirestore.getInstance()
 
