@@ -379,84 +379,86 @@ private fun MessageBubble(
     showReadReceipt: Boolean,
     isRead: Boolean
 ) {
-    Column(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
+        horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
+        Surface(
+            modifier = Modifier.widthIn(max = 280.dp),
+            shape = RoundedCornerShape(
+                topStart = 20.dp,
+                topEnd = 20.dp,
+                bottomStart = if (isMine) 20.dp else 4.dp,
+                bottomEnd = if (isMine) 4.dp else 20.dp
+            ),
+            color = if (isMine) Color(0xFF42A5F5) else Color.White,
+            tonalElevation = if (isMine) 0.dp else 1.dp,
+            shadowElevation = if (isMine) 2.dp else 1.dp
         ) {
-            Surface(
-                modifier = Modifier.widthIn(max = 280.dp),
-                shape = RoundedCornerShape(
-                    topStart = 20.dp,
-                    topEnd = 20.dp,
-                    bottomStart = if (isMine) 20.dp else 4.dp,
-                    bottomEnd = if (isMine) 4.dp else 20.dp
-                ),
-                color = if (isMine)
-                    Color(0xFF42A5F5)
-                else
-                    Color.White,
-                tonalElevation = if (isMine) 0.dp else 1.dp,
-                shadowElevation = if (isMine) 2.dp else 1.dp
-            ) {
-                Box(
-                    modifier = if (isMine) {
-                        Modifier.background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF42A5F5),
-                                    Color(0xFF4DD0E1)
-                                )
-                            )
+            Box(
+                modifier = if (isMine) {
+                    Modifier.background(
+                        Brush.linearGradient(
+                            colors = listOf(Color(0xFF42A5F5), Color(0xFF4DD0E1))
                         )
-                    } else {
-                        Modifier
-                    }
+                    )
+                } else Modifier
+            ) {
+                // Text + timestamp inline at bottom-right
+                val timeText = formatMessageTime(message.timestamp.toDate().time)
+
+                Row(
+                    modifier = Modifier.padding(
+                        start = 14.dp,
+                        end = 10.dp,
+                        top = 10.dp,
+                        bottom = 8.dp
+                    ),
+                    verticalAlignment = Alignment.Bottom
                 ) {
                     Text(
                         text = message.text,
-                        modifier = Modifier.padding(
-                            horizontal = 16.dp,
-                            vertical = 12.dp
-                        ),
+                        modifier = Modifier.weight(1f, fill = false),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (isMine)
-                            Color.White
-                        else
-                            Color(0xFF1a1a1a),
+                        color = if (isMine) Color.White else Color(0xFF1a1a1a),
                         lineHeight = 20.sp,
                         fontSize = 15.sp
                     )
+
+                    Spacer(Modifier.width(6.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier.padding(bottom = 1.dp)
+                    ) {
+                        Text(
+                            text = timeText,
+                            fontSize = 10.sp,
+                            color = if (isMine)
+                                Color.White.copy(alpha = 0.75f)
+                            else
+                                Color(0xFF999999),
+                            lineHeight = 12.sp
+                        )
+
+                        if (showReadReceipt) {
+                            Icon(
+                                imageVector = if (isRead) Icons.Default.DoneAll else Icons.Default.Done,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp),
+                                tint = if (isRead)
+                                    Color.White
+                                else
+                                    Color.White.copy(alpha = 0.65f)
+                            )
+                        }
+                    }
                 }
-            }
-        }
-
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = formatMessageTime(message.timestamp.toDate().time),
-                fontSize = 11.sp,
-                color = Color(0xFF999999)
-            )
-
-            if (showReadReceipt) {
-                Icon(
-                    imageVector = if (isRead) Icons.Default.DoneAll else Icons.Default.Done,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = if (isRead) Color(0xFF42A5F5) else Color(0xFF999999)
-                )
             }
         }
     }
 }
-
 @Composable
 private fun SystemMessageBubble(message: ChatMessage) {
     Box(
@@ -483,19 +485,10 @@ private fun formatMessageTime(timestamp: Long): String {
     val diff = now - timestamp
 
     return when {
-        diff < 60_000 -> "Just now"
+        diff < 60_000 -> "now"
         diff < 3600_000 -> "${diff / 60_000}m"
-        diff < 86400_000 -> {
-            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-            sdf.format(Date(timestamp))
-        }
-        diff < 604800_000 -> {
-            val sdf = SimpleDateFormat("EEE HH:mm", Locale.getDefault())
-            sdf.format(Date(timestamp))
-        }
-        else -> {
-            val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
-            sdf.format(Date(timestamp))
-        }
+        diff < 86400_000 -> SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
+        diff < 604800_000 -> SimpleDateFormat("EEE HH:mm", Locale.getDefault()).format(Date(timestamp))
+        else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(timestamp))
     }
 }

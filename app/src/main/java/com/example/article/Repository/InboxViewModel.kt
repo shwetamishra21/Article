@@ -1,5 +1,6 @@
 package com.example.article.chat
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
@@ -16,29 +17,41 @@ data class InboxUiState(
 
 class InboxViewModel : ViewModel() {
 
+    private companion object {
+        const val TAG = "InboxViewModel"
+    }
+
     private val _uiState = MutableStateFlow(InboxUiState())
     val uiState: StateFlow<InboxUiState> = _uiState.asStateFlow()
 
-    private var inboxListener: Job? = null
-
-    // ==================== LOAD INBOX ====================
+    private var inboxJob: Job? = null
+    private var currentUserId: String? = null
 
     fun loadInbox(userId: String) {
-        if (inboxListener != null) return
+        if (userId == currentUserId && inboxJob?.isActive == true) return
 
-        _uiState.value = InboxUiState(isLoading = true)
+        currentUserId = userId
+        inboxJob?.cancel()
 
-        inboxListener = viewModelScope.launch {
-            ChatRepository.observeInbox(userId).collect { chats ->
-                _uiState.value = InboxUiState(
-                    chats = chats,
-                    isLoading = false
+        inboxJob = viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            try {
+                ChatRepository.observeInbox(userId).collect { chats ->
+                    _uiState.value = _uiState.value.copy(
+                        chats = chats,
+                        isLoading = false,
+                        error = null
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading inbox", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Failed to load inbox"
                 )
             }
         }
     }
-
-    // ==================== CREATE CHAT ====================
 
     suspend fun createOrGetChat(
         currentUserId: String,
@@ -66,10 +79,8 @@ class InboxViewModel : ViewModel() {
         )
     }
 
-    // ==================== CLEANUP ====================
-
     override fun onCleared() {
         super.onCleared()
-        inboxListener?.cancel()
+        inboxJob?.cancel()
     }
 }

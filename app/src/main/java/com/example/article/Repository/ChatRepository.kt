@@ -31,12 +31,20 @@ object ChatRepository {
         serviceRequestId: String? = null
     ): Result<String> {
         return try {
-            // Create consistent chat ID (sorted UIDs)
             val chatId = if (userId1 < userId2) {
                 "${userId1}_${userId2}"
             } else {
                 "${userId2}_${userId1}"
             }
+
+            // ← ADD THESE LOGS
+            Log.d(TAG, "=== CHAT DEBUG ===")
+            Log.d(TAG, "userId1: $userId1")
+            Log.d(TAG, "userId2: $userId2")
+            Log.d(TAG, "type: $type")
+            Log.d(TAG, "user1Role: $user1Role")
+            Log.d(TAG, "user2Role: $user2Role")
+            Log.d(TAG, "chatId: $chatId")
 
             val chatRef = firestore.collection("chats").document(chatId)
             val existingChat = chatRef.get().await()
@@ -46,7 +54,6 @@ object ChatRepository {
                 return Result.success(chatId)
             }
 
-            // Create new chat
             val chatData = hashMapOf(
                 "id" to chatId,
                 "participants" to listOf(userId1, userId2),
@@ -76,6 +83,9 @@ object ChatRepository {
                 "serviceRequestId" to serviceRequestId
             )
 
+            Log.d(TAG, "chatData type value: ${chatData["type"]}")
+            Log.d(TAG, "chatData participants: ${chatData["participants"]}")
+
             chatRef.set(chatData).await()
             Log.d(TAG, "Created new chat: $chatId")
 
@@ -94,7 +104,6 @@ object ChatRepository {
     fun observeInbox(userId: String): Flow<List<ChatThread>> = callbackFlow {
         val listener = firestore.collection("chats")
             .whereArrayContains("participants", userId)
-            .orderBy("lastMessageAt", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error observing inbox", error)
@@ -138,7 +147,7 @@ object ChatRepository {
                     }
                 } ?: emptyList()
 
-                trySend(chats)
+                trySend(chats.sortedByDescending { it.lastMessageAt.toDate() })
             }
 
         awaitClose { listener.remove() }
@@ -153,7 +162,6 @@ object ChatRepository {
         val listener = firestore.collection("chats")
             .document(chatId)
             .collection("messages")
-            .orderBy("timestamp", Query.Direction.ASCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error observing messages", error)
@@ -170,7 +178,7 @@ object ChatRepository {
                             senderName = doc.getString("senderName") ?: "",
                             senderPhotoUrl = doc.getString("senderPhotoUrl") ?: "",
                             text = doc.getString("text") ?: "",
-                            timestamp = doc.getTimestamp("timestamp") ?: Timestamp.now(),
+                            timestamp = doc.getLong("timestamp")?.let { Timestamp(it / 1000, 0) } ?: Timestamp.now(),
                             readBy = (doc.get("readBy") as? List<*>)
                                 ?.mapNotNull { it as? String } ?: emptyList(),
                             deliveredTo = (doc.get("deliveredTo") as? List<*>)
@@ -217,15 +225,14 @@ object ChatRepository {
                 "senderName" to senderName,
                 "senderPhotoUrl" to senderPhotoUrl,
                 "text" to text.trim(),
-                "timestamp" to Timestamp.now(),
-                "readBy" to listOf(senderId), // Sender has read their own message
+                "timestamp" to System.currentTimeMillis(),  // ← FIXED (was Timestamp.now())
+                "readBy" to listOf(senderId),
                 "deliveredTo" to emptyList<String>(),
                 "isSystemMessage" to false
             )
 
             // Batch write: message + chat update
             firestore.runBatch { batch ->
-                // Add message
                 batch.set(
                     firestore.collection("chats")
                         .document(chatId)
@@ -234,7 +241,6 @@ object ChatRepository {
                     message
                 )
 
-                // Update chat metadata
                 batch.update(
                     firestore.collection("chats").document(chatId),
                     mapOf(
