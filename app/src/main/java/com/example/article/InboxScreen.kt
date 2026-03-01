@@ -71,15 +71,12 @@ fun InboxScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = {
-                    if (selectedTab == 0) onCreateRequest()
-                    else showUserPickerDialog = true
-                },
+                onClick = { showUserPickerDialog = true },
                 shape = RoundedCornerShape(16.dp),
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
                 Icon(
-                    if (selectedTab == 0) Icons.Default.Add else Icons.Default.PersonAdd,
+                    Icons.Default.PersonAdd,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimary
                 )
@@ -183,8 +180,7 @@ fun InboxScreen(
                     if (filteredChats.isEmpty()) {
                         EmptyInboxState(
                             isService = selectedTab == 0,
-                            onCreateRequest = onCreateRequest,
-                            onStartMemberChat = { showUserPickerDialog = true }
+                            onStartChat = { showUserPickerDialog = true }
                         )
                     } else {
                         LazyColumn(
@@ -231,7 +227,7 @@ fun InboxScreen(
                         otherUserRole = user.role
                     )
                 },
-                filterServiceProviders = selectedTab == 1
+                showOnlyServiceProviders = selectedTab == 0
             )
         }
 
@@ -308,7 +304,6 @@ private fun ConversationCard(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Avatar with role dot
             Box(modifier = Modifier.size(52.dp)) {
                 Box(
                     modifier = Modifier
@@ -341,7 +336,6 @@ private fun ConversationCard(
                 }
             }
 
-            // Content
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -522,8 +516,7 @@ private fun InboxTab(
 @Composable
 private fun EmptyInboxState(
     isService: Boolean,
-    onCreateRequest: () -> Unit,
-    onStartMemberChat: () -> Unit
+    onStartChat: () -> Unit
 ) {
     Box(
         modifier = Modifier.fillMaxSize().padding(32.dp),
@@ -560,18 +553,18 @@ private fun EmptyInboxState(
                 fontSize = 17.sp
             )
             Text(
-                text = if (isService) "Create a service request to connect with providers"
+                text = if (isService) "Chat with a service provider to get started"
                 else "Start chatting with your neighbors!",
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(4.dp))
             Button(
-                onClick = if (isService) onCreateRequest else onStartMemberChat,
+                onClick = onStartChat,
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
-                    text = if (isService) "Create Service Request" else "Start Conversation",
+                    text = if (isService) "Find a Provider" else "Start Conversation",
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -584,7 +577,7 @@ private fun EmptyInboxState(
 private fun UserPickerDialog(
     onDismiss: () -> Unit,
     onUserSelected: (SimpleUser) -> Unit,
-    filterServiceProviders: Boolean = false
+    showOnlyServiceProviders: Boolean = false
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var users by remember { mutableStateOf<List<SimpleUser>>(emptyList()) }
@@ -593,13 +586,18 @@ private fun UserPickerDialog(
 
     LaunchedEffect(Unit) {
         isLoading = true
-        users = loadAllUsers(currentUserId, filterServiceProviders)
+        users = loadAllUsers(currentUserId, showOnlyServiceProviders)
         isLoading = false
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Start Conversation", fontWeight = FontWeight.SemiBold) },
+        title = {
+            Text(
+                if (showOnlyServiceProviders) "Find a Provider" else "Start Conversation",
+                fontWeight = FontWeight.SemiBold
+            )
+        },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -701,14 +699,15 @@ private fun UserPickerItem(user: SimpleUser, onClick: () -> Unit) {
 
 private suspend fun loadAllUsers(
     currentUserId: String?,
-    filterServiceProviders: Boolean
+    showOnlyServiceProviders: Boolean = false
 ): List<SimpleUser> {
     return try {
         FirebaseFirestore.getInstance().collection("users").get().await()
             .documents.mapNotNull { doc ->
                 if (doc.id == currentUserId) return@mapNotNull null
                 val role = doc.getString("role") ?: "member"
-                if (filterServiceProviders && role == "service_provider") return@mapNotNull null
+                if (showOnlyServiceProviders && role != "service_provider") return@mapNotNull null
+                if (!showOnlyServiceProviders && role == "service_provider") return@mapNotNull null
                 SimpleUser(
                     uid = doc.id,
                     name = doc.getString("name") ?: "Unknown",
