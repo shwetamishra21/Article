@@ -50,17 +50,11 @@ fun RequestsScreen(
     var showProviderSheet by remember { mutableStateOf(false) }
     var selectedProviderIdForSheet by remember { mutableStateOf<String?>(null) }
 
-    // Load member requests on first entry
+    // Single LaunchedEffect — loads once when userId is available
     LaunchedEffect(userId) {
         userId?.let {
             viewModel.loadMemberRequests(it)
         }
-    }
-
-    // NEW: refresh whenever the screen recomposes (e.g. returning from provider screen)
-    // so provider status changes (completed, in_progress etc.) are picked up immediately
-    LaunchedEffect(Unit) {
-        viewModel.refreshRequests()
     }
 
     // Auto-dismiss error after 3 seconds

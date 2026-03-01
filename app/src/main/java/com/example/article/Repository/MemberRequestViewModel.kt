@@ -60,14 +60,6 @@ class MemberRequestViewModel(
         }
     }
 
-    fun refreshRequests() {
-        currentMemberId?.let { memberId ->
-            listenerJob?.cancel()
-            currentMemberId = null
-            loadMemberRequests(memberId)
-        }
-    }
-
     fun createRequest(
         title: String,
         description: String,
@@ -156,7 +148,6 @@ class MemberRequestViewModel(
         viewModelScope.launch {
             _loading.value = true
 
-
             try {
                 val firestore = FirebaseFirestore.getInstance()
 
@@ -168,6 +159,7 @@ class MemberRequestViewModel(
                 val providerId = requestDoc.getString("providerId")
                 if (providerId == null) {
                     _error.value = "No provider assigned to this request"
+                    _loading.value = false
                     return@launch
                 }
 
@@ -182,8 +174,8 @@ class MemberRequestViewModel(
                     )
                     .await()
 
+                // Recalculate provider rating — real-time listener handles UI update automatically
                 recalculateProviderRating(providerId)
-                refreshRequests()
 
             } catch (e: Exception) {
                 _error.value = "Failed to submit rating: ${e.message}"

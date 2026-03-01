@@ -1,5 +1,6 @@
 package com.example.article
 
+import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -295,13 +296,14 @@ fun ViewProfileScreen(
                             if (currentUserId != null && currentUserId != userId) {
                                 Button(
                                     onClick = {
-                                        // Create chat ID from both user IDs (sorted for consistency)
                                         val chatId = if (currentUserId < userId) {
                                             "${currentUserId}_${userId}"
                                         } else {
                                             "${userId}_${currentUserId}"
                                         }
-                                        navController.navigate("chat/$chatId/${profile.name}")
+                                        val encodedName = Uri.encode(profile.name.ifEmpty { "User" })
+                                        val encodedPhoto = Uri.encode(profile.photoUrl.ifEmpty { "none" })
+                                        navController.navigate("chat/$chatId/$userId/$encodedName/$encodedPhoto")
                                     },
                                     modifier = Modifier
                                         .fillMaxWidth()
