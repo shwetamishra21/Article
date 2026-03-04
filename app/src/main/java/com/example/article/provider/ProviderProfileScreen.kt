@@ -364,6 +364,8 @@ fun ProviderProfileScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isUpdating by viewModel.isUpdating.collectAsState()
+    val activeRequests by viewModel.activeRequests.collectAsState()
+    val completedJobs by viewModel.completedJobs.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -379,8 +381,6 @@ fun ProviderProfileScreen(
     var showSkillsDialog by remember { mutableStateOf(false) }
 
     // Provider stats
-    var completedJobs by remember { mutableStateOf(0) }
-    var activeRequests by remember { mutableStateOf(0) }
     var avgRating by remember { mutableStateOf(0.0f) }
     var ratingCount by remember { mutableStateOf(0) }
 
@@ -406,45 +406,19 @@ fun ProviderProfileScreen(
         viewModel.loadProfile()
     }
 
-    // Load provider stats & Firestore extras whenever profile loads successfully
     LaunchedEffect(uiState) {
         if (uiState is ProfileUiState.Success) {
-            scope.launch {
-                try {
-                    val firestore = FirebaseFirestore.getInstance()
-                    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
+            val profile = (uiState as ProfileUiState.Success).profile
 
-                    // Load service type, availability, and rating from user document
-                    val userDoc = firestore.collection("users")
-                        .document(userId)
-                        .get()
-                        .await()
+            // Sync local state from profile — free, no network call
+            editServiceType = profile.serviceType.ifEmpty { "Plumber" }
+            isAvailable     = profile.isAvailable
+            avgRating       = profile.averageRating
+            ratingCount     = profile.ratingCount
 
-                    editServiceType = userDoc.getString("serviceType") ?: "Plumber"
-                    isAvailable = userDoc.getBoolean("isAvailable") ?: true
-                    avgRating = (userDoc.getDouble("averageRating") ?: 0.0).toFloat()
-                    ratingCount = (userDoc.getLong("ratingCount") ?: 0L).toInt()
-
-                    // Completed jobs count
-                    val completedSnapshot = firestore.collection("service_requests")
-                        .whereEqualTo("providerId", userId)
-                        .whereEqualTo("status", "completed")
-                        .get()
-                        .await()
-                    completedJobs = completedSnapshot.size()
-
-                    // Active requests count (accepted + in_progress)
-                    val activeSnapshot = firestore.collection("service_requests")
-                        .whereEqualTo("providerId", userId)
-                        .whereIn("status", listOf("accepted", "in_progress"))
-                        .get()
-                        .await()
-                    activeRequests = activeSnapshot.size()
-
-                } catch (e: Exception) {
-                    // Silently fail — stats are non-critical
-                }
-            }
+            // Start real-time listeners for job counts
+            val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return@LaunchedEffect
+            viewModel.listenToProviderStats(userId)
         }
     }
 
