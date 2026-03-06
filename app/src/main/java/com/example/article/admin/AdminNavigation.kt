@@ -12,6 +12,7 @@ sealed class AdminRoute(val route: String) {
     object ProviderApproval : AdminRoute("provider_approval")
     object Announcements : AdminRoute("announcements")
     object ContentModeration : AdminRoute("content_moderation")
+    object JoinRequests : AdminRoute("join_requests")          // NEW
 }
 
 @Composable
@@ -36,6 +37,9 @@ fun AdminNavigation(
                 },
                 onNavigateToModeration = {
                     navController.navigate(AdminRoute.ContentModeration.route)
+                },
+                onNavigateToJoinRequests = {                   // NEW
+                    navController.navigate(AdminRoute.JoinRequests.route)
                 }
             )
         }
@@ -60,6 +64,12 @@ fun AdminNavigation(
 
         composable(AdminRoute.ContentModeration.route) {
             ContentModerationScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(AdminRoute.JoinRequests.route) {            // NEW
+            JoinRequestsScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }

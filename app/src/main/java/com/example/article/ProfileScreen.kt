@@ -53,6 +53,9 @@ fun ProfileScreen(
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var viewMode by remember { mutableStateOf(ViewMode.LIST) }
 
+    // Live session — updates when admin approves join request or user saves profile
+    val currentUser by UserSessionManager.currentUser.collectAsState()
+
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
@@ -174,6 +177,10 @@ fun ProfileScreen(
 
             is ProfileUiState.Success -> {
                 val profile = state.profile
+
+                // Use live session neighbourhood so it reflects admin approval instantly
+                val displayNeighbourhood = currentUser?.neighbourhood
+                    ?.takeIf { it.isNotBlank() } ?: profile.neighbourhood
 
                 LazyColumn(
                     modifier = Modifier
@@ -302,7 +309,7 @@ fun ProfileScreen(
                                         color = Color(0xFF1a1a1a)
                                     )
 
-                                    if (profile.neighbourhood.isNotEmpty()) {
+                                    if (displayNeighbourhood.isNotEmpty()) {
                                         Row(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             verticalAlignment = Alignment.CenterVertically
@@ -314,7 +321,7 @@ fun ProfileScreen(
                                                 tint = Color(0xFF42A5F5)
                                             )
                                             Text(
-                                                text = profile.neighbourhood,
+                                                text = displayNeighbourhood,
                                                 fontSize = 14.sp,
                                                 color = Color(0xFF42A5F5),
                                                 fontWeight = FontWeight.Medium
@@ -425,7 +432,7 @@ fun ProfileScreen(
                                         onClick = {
                                             editName = profile.name
                                             editBio = profile.bio
-                                            editNeighborhood = profile.neighbourhood
+                                            editNeighborhood = displayNeighbourhood
                                             isEditing = true
                                         },
                                         modifier = Modifier

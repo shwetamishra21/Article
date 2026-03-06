@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.article.FeedItem
+import com.example.article.UserSessionManager
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -168,6 +169,7 @@ class ProfileViewModel : ViewModel() {
                 firestore.collection("users").document(userId)
                     .update(mapOf("name" to name, "bio" to bio, "neighbourhood" to neighbourhood))
                     .await()
+                UserSessionManager.refreshProfile(firestore)
                 loadProfile()
                 _isUpdating.value = false
                 onComplete()
@@ -201,6 +203,7 @@ class ProfileViewModel : ViewModel() {
                         "skills" to skills,
                         "isAvailable" to isAvailable
                     )).await()
+                UserSessionManager.refreshProfile(firestore)
                 loadProfile()
                 _isUpdating.value = false
                 onComplete()

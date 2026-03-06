@@ -29,6 +29,7 @@ import com.example.article.admin.AdminBottomBar
 import com.example.article.admin.AdminDashboardScreen
 import com.example.article.admin.AnnouncementManagementScreen
 import com.example.article.admin.ContentModerationScreen
+import com.example.article.admin.JoinRequestsScreen
 import com.example.article.admin.ProviderApprovalScreen
 import com.example.article.provider.ProviderBottomBar
 import com.example.article.provider.ProviderInboxScreen
@@ -174,7 +175,6 @@ private fun ProviderApp(
             modifier = Modifier.padding(innerPadding)
         ) {
 
-            // Provider Requests Screen (Wired with ViewModel)
             composable("provider_home") {
                 ProviderRequestsScreen()
             }
@@ -183,7 +183,6 @@ private fun ProviderApp(
                 ProviderInboxScreen(navController = navController)
             }
 
-            // Provider Profile Screen (Wired with ViewModel)
             composable("provider_profile") {
                 ProviderProfileScreen(
                     onLogout = {
@@ -194,7 +193,6 @@ private fun ProviderApp(
                 )
             }
 
-            // Enhanced Chat Screen
             composable(
                 route = "chat/{chatId}/{otherUserId}/{otherUserName}/{otherUserPhoto}",
                 arguments = listOf(
@@ -219,7 +217,6 @@ private fun ProviderApp(
             composable("view_profile/{userId}/{role}") { backStack ->
                 val userId = backStack.arguments?.getString("userId") ?: return@composable
                 val role = backStack.arguments?.getString("role") ?: return@composable
-
                 ViewProfileScreen(
                     navController = navController,
                     userId = userId,
@@ -284,7 +281,6 @@ private fun MemberApp(
                 )
             }
 
-            // Service Requests Screen (Wired with ViewModel)
             composable("requests") {
                 RequestsScreen(
                     onCreateNew = {
@@ -293,7 +289,6 @@ private fun MemberApp(
                 )
             }
 
-            // Request Form Screen (Wired with ViewModel)
             composable("request_form") {
                 RequestFormScreen(
                     onCancel = { navController.popBackStack() },
@@ -315,7 +310,6 @@ private fun MemberApp(
                 val postId = backStack.arguments?.getString("postId") ?: return@composable
                 val postAuthorId =
                     backStack.arguments?.getString("postAuthorId") ?: return@composable
-
                 CommentScreen(
                     postId = postId,
                     postAuthorId = postAuthorId,
@@ -323,7 +317,6 @@ private fun MemberApp(
                 )
             }
 
-            // Enhanced Chat Screen
             composable(
                 route = "chat/{chatId}/{otherUserId}/{otherUserName}/{otherUserPhoto}",
                 arguments = listOf(
@@ -348,7 +341,6 @@ private fun MemberApp(
             composable("view_profile/{userId}/{role}") { backStack ->
                 val userId = backStack.arguments?.getString("userId") ?: return@composable
                 val role = backStack.arguments?.getString("role") ?: return@composable
-
                 ViewProfileScreen(
                     navController = navController,
                     userId = userId,
@@ -440,7 +432,6 @@ private fun AdminApp(
                 val postId = backStack.arguments?.getString("postId") ?: return@composable
                 val postAuthorId =
                     backStack.arguments?.getString("postAuthorId") ?: return@composable
-
                 CommentScreen(
                     postId = postId,
                     postAuthorId = postAuthorId,
@@ -448,7 +439,6 @@ private fun AdminApp(
                 )
             }
 
-            // Enhanced Chat Screen
             composable(
                 route = "chat/{chatId}/{otherUserId}/{otherUserName}/{otherUserPhoto}",
                 arguments = listOf(
@@ -473,7 +463,6 @@ private fun AdminApp(
             composable("view_profile/{userId}/{role}") { backStack ->
                 val userId = backStack.arguments?.getString("userId") ?: return@composable
                 val role = backStack.arguments?.getString("role") ?: return@composable
-
                 ViewProfileScreen(
                     navController = navController,
                     userId = userId,
@@ -481,7 +470,7 @@ private fun AdminApp(
                 )
             }
 
-            // ============ ADMIN DASHBOARD (WIRED WITH VIEWMODELS) ============
+            // ============ ADMIN SCREENS ============
             composable("admin_dashboard") {
                 AdminDashboardScreen(
                     onNavigateToMembers = {
@@ -495,34 +484,39 @@ private fun AdminApp(
                     },
                     onNavigateToModeration = {
                         navController.navigate("content_moderation")
+                    },
+                    onNavigateToJoinRequests = {                  // NEW
+                        navController.navigate("join_requests")
                     }
                 )
             }
 
-            // Member Management Screen (Wired)
             composable("member_management") {
                 MemberManagementScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
 
-            // Provider Approval Screen (Wired)
             composable("provider_approval") {
                 ProviderApprovalScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
 
-            // Announcements Screen
             composable("announcements") {
                 AnnouncementManagementScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
 
-            // Content Moderation Screen
             composable("content_moderation") {
                 ContentModerationScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("join_requests") {                         // NEW
+                JoinRequestsScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

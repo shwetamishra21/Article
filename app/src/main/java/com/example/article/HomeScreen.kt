@@ -46,32 +46,13 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     var unreadNotifications by remember { mutableIntStateOf(3) }
 
-    // Fetch actual user neighborhood - FIXED
-    var actualNeighborhood by remember { mutableStateOf(userNeighborhood) }
+    val currentUser by UserSessionManager.currentUser.collectAsState()
+    val actualNeighborhood = currentUser?.neighbourhood
+        ?.takeIf { it.isNotBlank() } ?: userNeighborhood
 
     LaunchedEffect(Unit) {
         viewModel.loadFeed()
-
-        // Fetch user's neighborhood - COMPLETELY FIXED
-        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
-        if (currentUserId != null) {
-            FirebaseFirestore.getInstance()
-                .collection("users")
-                .document(currentUserId)
-                .addSnapshotListener { document, error ->
-                    if (error != null) return@addSnapshotListener
-
-                    if (document != null && document.exists()) {
-                        // Try BOTH spellings
-                        val hood = document.getString("neighborhood")
-                            ?: document.getString("neighbourhood")
-
-                        if (!hood.isNullOrBlank()) {
-                            actualNeighborhood = hood
-                        }
-                    }
-                }
-        }
+        UserSessionManager.refreshProfile(FirebaseFirestore.getInstance())
     }
 
     Scaffold(
