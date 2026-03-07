@@ -47,7 +47,6 @@ class JoinRequestViewModel : ViewModel() {
                 return@launch
             }
 
-            // Step 1: get admin's neighbourhood
             val neighResult = NeighbourhoodRepository.getNeighbourhoodByAdmin(adminId)
             if (neighResult.isFailure || neighResult.getOrNull() == null) {
                 _error.value = "No neighbourhood found. Create one first."
@@ -57,8 +56,6 @@ class JoinRequestViewModel : ViewModel() {
 
             val neighbourhood = neighResult.getOrNull()!!
             _neighbourhood.value = neighbourhood
-
-            // Step 2: load pending requests
             loadRequests(neighbourhood.id)
         }
     }
@@ -80,7 +77,6 @@ class JoinRequestViewModel : ViewModel() {
             val result = NeighbourhoodRepository.approveRequest(request)
             if (result.isSuccess) {
                 _successMessage.value = "${request.userName} approved successfully"
-                // Refresh list
                 _neighbourhood.value?.id?.let { loadRequests(it) }
             } else {
                 _error.value = result.exceptionOrNull()?.message ?: "Failed to approve"
@@ -109,7 +105,7 @@ class JoinRequestViewModel : ViewModel() {
     }
 }
 
-// ==================== NEIGHBOURHOOD SEARCH VIEW MODEL (Members/Providers) ====================
+// ==================== NEIGHBOURHOOD SEARCH STATE ====================
 
 sealed class NeighbourhoodSearchState {
     object Idle : NeighbourhoodSearchState()
@@ -118,12 +114,14 @@ sealed class NeighbourhoodSearchState {
     data class Error(val message: String) : NeighbourhoodSearchState()
 }
 
+// ==================== NEIGHBOURHOOD SEARCH VIEW MODEL (Members) ====================
+// Used by the member SearchScreen. Single neighbourhood limit is enforced in the repository.
+
 class NeighbourhoodSearchViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow<NeighbourhoodSearchState>(NeighbourhoodSearchState.Idle)
     val uiState: StateFlow<NeighbourhoodSearchState> = _uiState.asStateFlow()
 
-    // Map of neighbourhoodId -> request status ("none" | "pending" | "approved" | "rejected")
     private val _requestStatusMap = MutableStateFlow<Map<String, String>>(emptyMap())
     val requestStatusMap: StateFlow<Map<String, String>> = _requestStatusMap.asStateFlow()
 
@@ -148,8 +146,6 @@ class NeighbourhoodSearchViewModel : ViewModel() {
             if (result.isSuccess) {
                 allNeighbourhoods = result.getOrNull() ?: emptyList()
                 applySearch()
-
-                // Load request statuses for current user
                 loadRequestStatuses()
             } else {
                 _uiState.value = NeighbourhoodSearchState.Error(
@@ -162,12 +158,9 @@ class NeighbourhoodSearchViewModel : ViewModel() {
     private suspend fun loadRequestStatuses() {
         val userId = UserSessionManager.getCurrentUid() ?: return
         val statusMap = mutableMapOf<String, String>()
-
         for (neighbourhood in allNeighbourhoods) {
-            val status = NeighbourhoodRepository.getUserRequestStatus(userId, neighbourhood.id)
-            statusMap[neighbourhood.id] = status
+            statusMap[neighbourhood.id] = NeighbourhoodRepository.getUserRequestStatus(userId, neighbourhood.id)
         }
-
         _requestStatusMap.value = statusMap
     }
 
@@ -177,13 +170,10 @@ class NeighbourhoodSearchViewModel : ViewModel() {
     }
 
     private fun applySearch() {
-        val filtered = if (currentQuery.isBlank()) {
-            allNeighbourhoods
-        } else {
-            allNeighbourhoods.filter {
-                it.name.contains(currentQuery, ignoreCase = true) ||
-                        it.description.contains(currentQuery, ignoreCase = true)
-            }
+        val filtered = if (currentQuery.isBlank()) allNeighbourhoods
+        else allNeighbourhoods.filter {
+            it.name.contains(currentQuery, ignoreCase = true) ||
+                    it.description.contains(currentQuery, ignoreCase = true)
         }
         _uiState.value = NeighbourhoodSearchState.Success(filtered)
     }
@@ -208,7 +198,6 @@ class NeighbourhoodSearchViewModel : ViewModel() {
 
             if (result.isSuccess) {
                 _actionMessage.value = "Request sent to ${neighbourhood.name}"
-                // Update local status map immediately so button reflects change
                 _requestStatusMap.value = _requestStatusMap.value.toMutableMap().apply {
                     put(neighbourhood.id, "pending")
                 }
@@ -216,6 +205,107 @@ class NeighbourhoodSearchViewModel : ViewModel() {
                 _actionMessage.value = result.exceptionOrNull()?.message ?: "Failed to send request"
             }
             _isActioning.value = false
+        }
+    }
+
+    fun clearMessage() {
+        _actionMessage.value = null
+    }
+}
+
+// ==================== PROVIDER NEIGHBOURHOOD SEARCH VIEW MODEL ====================
+// Providers can join MULTIPLE neighbourhoods.
+// isActioning tracks per-card loading by storing the neighbourhoodId being actioned.
+
+class ProviderNeighbourhoodSearchViewModel : ViewModel() {
+
+    private val _uiState = MutableStateFlow<NeighbourhoodSearchState>(NeighbourhoodSearchState.Idle)
+    val uiState: StateFlow<NeighbourhoodSearchState> = _uiState.asStateFlow()
+
+    private val _requestStatusMap = MutableStateFlow<Map<String, String>>(emptyMap())
+    val requestStatusMap: StateFlow<Map<String, String>> = _requestStatusMap.asStateFlow()
+
+    private val _actionMessage = MutableStateFlow<String?>(null)
+    val actionMessage: StateFlow<String?> = _actionMessage.asStateFlow()
+
+    // Holds the neighbourhoodId currently being actioned (null = none in progress)
+    private val _isActioning = MutableStateFlow<String?>(null)
+    val isActioning: StateFlow<String?> = _isActioning.asStateFlow()
+
+    private var allNeighbourhoods: List<Neighbourhood> = emptyList()
+    private var currentQuery: String = ""
+
+    companion object {
+        private const val TAG = "ProviderNeighVM"
+    }
+
+    fun loadNeighbourhoods() {
+        viewModelScope.launch {
+            _uiState.value = NeighbourhoodSearchState.Loading
+            val result = NeighbourhoodRepository.getAllNeighbourhoods()
+            if (result.isSuccess) {
+                allNeighbourhoods = result.getOrNull() ?: emptyList()
+                applySearch()
+                loadRequestStatuses()
+            } else {
+                _uiState.value = NeighbourhoodSearchState.Error(
+                    result.exceptionOrNull()?.message ?: "Failed to load neighbourhoods"
+                )
+            }
+        }
+    }
+
+    private suspend fun loadRequestStatuses() {
+        val userId = UserSessionManager.getCurrentUid() ?: return
+        val statusMap = mutableMapOf<String, String>()
+        for (neighbourhood in allNeighbourhoods) {
+            statusMap[neighbourhood.id] = NeighbourhoodRepository.getUserRequestStatus(userId, neighbourhood.id)
+        }
+        _requestStatusMap.value = statusMap
+        Log.d(TAG, "Loaded statuses for ${statusMap.size} neighbourhoods")
+    }
+
+    fun searchNeighbourhoods(query: String) {
+        currentQuery = query
+        applySearch()
+    }
+
+    private fun applySearch() {
+        val filtered = if (currentQuery.isBlank()) allNeighbourhoods
+        else allNeighbourhoods.filter {
+            it.name.contains(currentQuery, ignoreCase = true) ||
+                    it.description.contains(currentQuery, ignoreCase = true)
+        }
+        _uiState.value = NeighbourhoodSearchState.Success(filtered)
+    }
+
+    fun sendJoinRequest(neighbourhood: Neighbourhood) {
+        viewModelScope.launch {
+            _isActioning.value = neighbourhood.id
+            val user = UserSessionManager.currentUser.value
+            if (user == null) {
+                _actionMessage.value = "Not logged in"
+                _isActioning.value = null
+                return@launch
+            }
+
+            val result = NeighbourhoodRepository.sendJoinRequest(
+                userId = user.uid,
+                userName = user.name,
+                userEmail = user.email,
+                userRole = user.role,
+                neighbourhoodId = neighbourhood.id
+            )
+
+            if (result.isSuccess) {
+                _actionMessage.value = "Request sent to ${neighbourhood.name}"
+                _requestStatusMap.value = _requestStatusMap.value.toMutableMap().apply {
+                    put(neighbourhood.id, "pending")
+                }
+            } else {
+                _actionMessage.value = result.exceptionOrNull()?.message ?: "Failed to send request"
+            }
+            _isActioning.value = null
         }
     }
 
@@ -264,7 +354,7 @@ class AdminNeighbourhoodViewModel : ViewModel() {
             val result = NeighbourhoodRepository.createNeighbourhood(adminId, name.trim(), description.trim())
             if (result.isSuccess) {
                 _message.value = "Neighbourhood created successfully!"
-                loadAdminNeighbourhood() // Refresh
+                loadAdminNeighbourhood()
             } else {
                 _message.value = result.exceptionOrNull()?.message ?: "Failed to create neighbourhood"
             }

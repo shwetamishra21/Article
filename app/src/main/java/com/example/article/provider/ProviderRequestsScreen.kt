@@ -17,9 +17,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
+import com.example.article.Repository.Neighbourhood
 import com.example.article.Repository.ProviderRequestsViewModel
 import com.example.article.Repository.ServiceRequest
 import com.example.article.ui.theme.*
@@ -30,18 +33,20 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProviderRequestsScreen(
+    navController: NavController? = null,
     viewModel: ProviderRequestsViewModel = viewModel()
 ) {
     val auth = FirebaseAuth.getInstance()
     val providerId = auth.currentUser?.uid
 
-    val requests        by viewModel.requests.collectAsState()
+    val requests by viewModel.requests.collectAsState()
     val pendingRequests by viewModel.pendingRequests.collectAsState()
-    val loading         by viewModel.loading.collectAsState()
-    val pendingLoading  by viewModel.pendingLoading.collectAsState()
-    val error           by viewModel.error.collectAsState()
+    val loading by viewModel.loading.collectAsState()
+    val pendingLoading by viewModel.pendingLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
+    val noNeighbourhood by viewModel.noNeighbourhood.collectAsState()
+    val providerNeighbourhoods by viewModel.providerNeighbourhoods.collectAsState()
 
-    // 0=New(Pending), 1=Accepted, 2=In Progress, 3=Completed
     var selectedTab by remember { mutableStateOf(0) }
 
     LaunchedEffect(providerId) {
@@ -81,12 +86,53 @@ fun ProviderRequestsScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "Service Requests",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        color = BlueOnPrimary
-                    )
+                    Column {
+                        Text(
+                            "Service Requests",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            color = BlueOnPrimary
+                        )
+                        // Subtitle: single name, count, or nothing
+                        when {
+                            providerNeighbourhoods.size == 1 -> {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Home,
+                                        contentDescription = null,
+                                        tint = BlueOnPrimary.copy(alpha = 0.75f),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Text(
+                                        text = providerNeighbourhoods.first().name,
+                                        fontSize = 12.sp,
+                                        color = BlueOnPrimary.copy(alpha = 0.75f)
+                                    )
+                                }
+                            }
+                            providerNeighbourhoods.size > 1 -> {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Home,
+                                        contentDescription = null,
+                                        tint = BlueOnPrimary.copy(alpha = 0.75f),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Text(
+                                        text = "${providerNeighbourhoods.size} neighbourhoods",
+                                        fontSize = 12.sp,
+                                        color = BlueOnPrimary.copy(alpha = 0.75f)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 modifier = Modifier
@@ -109,8 +155,7 @@ fun ProviderRequestsScreen(
                 .padding(padding)
                 .background(BackgroundLight)
         ) {
-
-            // ── Tab Row ─────────────────────────────────────────────────────
+            // ── Tab Row ──────────────────────────────────────────────────
             ScrollableTabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = SurfaceLight,
@@ -126,7 +171,7 @@ fun ProviderRequestsScreen(
                 ).forEachIndexed { index, (label, count) ->
                     FilterChip(
                         selected = selectedTab == index,
-                        onClick  = { selectedTab = index },
+                        onClick = { selectedTab = index },
                         label = {
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -135,21 +180,18 @@ fun ProviderRequestsScreen(
                                 Text(
                                     label,
                                     fontSize = 13.sp,
-                                    fontWeight = if (selectedTab == index) FontWeight.Bold
-                                    else FontWeight.Medium
+                                    fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Medium
                                 )
                                 if (count > 0) {
                                     Surface(
-                                        color = if (selectedTab == index) BluePrimary
-                                        else Color(0xFFE0E0E0),
+                                        color = if (selectedTab == index) BluePrimary else Color(0xFFE0E0E0),
                                         shape = RoundedCornerShape(10.dp)
                                     ) {
                                         Text(
                                             "$count",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (selectedTab == index) Color.White
-                                            else Color(0xFF666666),
+                                            color = if (selectedTab == index) Color.White else Color(0xFF666666),
                                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                         )
                                     }
@@ -159,95 +201,71 @@ fun ProviderRequestsScreen(
                         modifier = Modifier.padding(horizontal = 4.dp),
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = BluePrimary.copy(alpha = 0.15f),
-                            selectedLabelColor     = BluePrimary
+                            selectedLabelColor = BluePrimary
                         )
                     )
                 }
             }
 
-            // ── Loading ─────────────────────────────────────────────────────
+            // ── Content ──────────────────────────────────────────────────
             val isLoading = if (selectedTab == 0) pendingLoading else loading
-            if (isLoading && filteredRequests.isEmpty()) {
-                Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    CircularProgressIndicator(color = BluePrimary)
-                }
-                return@Column
-            }
 
-            // ── Empty state ─────────────────────────────────────────────────
-            if (!isLoading && filteredRequests.isEmpty()) {
-                Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = when (selectedTab) {
-                                0    -> Icons.Default.Inbox
-                                1    -> Icons.Default.Assignment
-                                2    -> Icons.Default.Loop
-                                else -> Icons.Default.Done
-                            },
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = Color(0xFF999999).copy(alpha = 0.5f)
-                        )
-                        Text(
-                            text = when (selectedTab) {
-                                0    -> "No new requests"
-                                1    -> "No accepted requests"
-                                2    -> "No jobs in progress"
-                                else -> "No completed jobs yet"
-                            },
-                            fontSize = 16.sp,
-                            color = Color(0xFF666666),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = when (selectedTab) {
-                                0    -> "New service requests from members will appear here"
-                                1    -> "Accept a request from the New tab to see it here"
-                                2    -> "Begin an accepted job to move it here"
-                                else -> "Completed jobs will appear here"
-                            },
-                            fontSize = 13.sp,
-                            color = Color(0xFF999999)
-                        )
+            when {
+                // No neighbourhood → show join prompt on the New tab
+                selectedTab == 0 && noNeighbourhood -> {
+                    NoNeighbourhoodPrompt(
+                        onGoToSearch = {
+                            navController?.navigate("provider_search") { launchSingleTop = true }
+                        }
+                    )
+                }
+
+                isLoading && filteredRequests.isEmpty() -> {
+                    Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        CircularProgressIndicator(color = BluePrimary)
                     }
                 }
-            } else {
-                // ── List ────────────────────────────────────────────────────
-                LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (selectedTab == 0) {
-                        items(filteredRequests, key = { it.id }) { request ->
-                            PendingRequestCard(
-                                request  = request,
-                                onAccept = {
-                                    viewModel.accept(request.id, providerId)
-                                    selectedTab = 1   // jump straight to Accepted tab
-                                }
-                            )
-                        }
-                    } else {
-                        items(filteredRequests, key = { it.id }) { request ->
-                            ProviderRequestCard(
-                                request       = request,
-                                onBeginWork   = {
-                                    viewModel.startWork(request.id)
-                                    selectedTab = 2   // jump to In Progress tab
-                                },
-                                onMarkComplete = {
-                                    viewModel.complete(request.id, providerId)
-                                    selectedTab = 3   // jump to Completed tab
-                                },
-                                onDecline     = {
-                                    viewModel.decline(request.id)
-                                    selectedTab = 0   // return to New tab
-                                }
-                            )
+
+                !isLoading && filteredRequests.isEmpty() -> {
+                    EmptyTabState(
+                        tab = selectedTab,
+                        neighbourhoodNames = providerNeighbourhoods.map { it.name }
+                    )
+                }
+
+                else -> {
+                    LazyColumn(
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (selectedTab == 0) {
+                            items(filteredRequests, key = { it.id }) { request ->
+                                PendingRequestCard(
+                                    request = request,
+                                    onAccept = {
+                                        viewModel.accept(request.id, providerId)
+                                        selectedTab = 1
+                                    }
+                                )
+                            }
+                        } else {
+                            items(filteredRequests, key = { it.id }) { request ->
+                                ProviderRequestCard(
+                                    request = request,
+                                    onBeginWork = {
+                                        viewModel.startWork(request.id)
+                                        selectedTab = 2
+                                    },
+                                    onMarkComplete = {
+                                        viewModel.complete(request.id, providerId)
+                                        selectedTab = 3
+                                    },
+                                    onDecline = {
+                                        viewModel.decline(request.id)
+                                        selectedTab = 0
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -257,8 +275,151 @@ fun ProviderRequestsScreen(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// No neighbourhood prompt — shown inside the New tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun NoNeighbourhoodPrompt(onGoToSearch: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Surface(
+                modifier = Modifier.size(88.dp),
+                shape = RoundedCornerShape(22.dp),
+                color = BluePrimary.copy(alpha = 0.09f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Home,
+                        contentDescription = null,
+                        modifier = Modifier.size(44.dp),
+                        tint = BluePrimary.copy(alpha = 0.55f)
+                    )
+                }
+            }
+
+            Text(
+                "Join a Neighbourhood First",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = OnSurfaceLight
+            )
+            Text(
+                "Service requests are only visible to providers within the same neighbourhood. Find one to join.",
+                fontSize = 13.sp,
+                color = Color(0xFF777777),
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp
+            )
+
+            Button(
+                onClick = onGoToSearch,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = BluePrimary),
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(vertical = 14.dp)
+            ) {
+                Icon(Icons.Default.Search, null, Modifier.size(17.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Find a Neighbourhood", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            }
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFF0F4FF),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        Icons.Default.Info, null,
+                        tint = BluePrimary,
+                        modifier = Modifier.size(15.dp).padding(top = 1.dp)
+                    )
+                    Text(
+                        "Your join request needs to be approved by the neighbourhood admin.",
+                        fontSize = 12.sp,
+                        color = Color(0xFF444466),
+                        lineHeight = 18.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Empty state per tab — handles single, multiple, or no neighbourhood names
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun EmptyTabState(
+    tab: Int,
+    neighbourhoodNames: List<String>
+) {
+    Box(Modifier.fillMaxSize(), Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(32.dp)
+        ) {
+            Icon(
+                imageVector = when (tab) {
+                    0    -> Icons.Default.Inbox
+                    1    -> Icons.Default.Assignment
+                    2    -> Icons.Default.Loop
+                    else -> Icons.Default.Done
+                },
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = Color(0xFF999999).copy(alpha = 0.45f)
+            )
+            Text(
+                text = when (tab) {
+                    0    -> "No new requests"
+                    1    -> "No accepted requests"
+                    2    -> "No jobs in progress"
+                    else -> "No completed jobs yet"
+                },
+                fontSize = 16.sp,
+                color = Color(0xFF666666),
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = when (tab) {
+                    0 -> when {
+                        neighbourhoodNames.size == 1 ->
+                            "No open requests from ${neighbourhoodNames.first()} members"
+                        neighbourhoodNames.size > 1  ->
+                            "No open requests from any of your ${neighbourhoodNames.size} neighbourhoods"
+                        else -> "New service requests will appear here"
+                    }
+                    1    -> "Accept a request from the New tab"
+                    2    -> "Begin an accepted job to see it here"
+                    else -> "Completed jobs will appear here"
+                },
+                fontSize = 13.sp,
+                color = Color(0xFF999999),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // "New" tab card — accept only
 // ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun PendingRequestCard(
     request: ServiceRequest,
@@ -277,7 +438,6 @@ private fun PendingRequestCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -289,23 +449,11 @@ private fun PendingRequestCard(
                 ) {
                     AvatarCircle(request.memberName, 40)
                     Column {
-                        Text(
-                            request.memberName,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = OnSurfaceLight
-                        )
-                        Text(
-                            request.serviceType,
-                            fontSize = 12.sp,
-                            color = Color(0xFF666666)
-                        )
+                        Text(request.memberName, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = OnSurfaceLight)
+                        Text(request.serviceType, fontSize = 12.sp, color = Color(0xFF666666))
                     }
                 }
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color(0xFFFF9800).copy(alpha = 0.15f)
-                ) {
+                Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFFF9800).copy(alpha = 0.15f)) {
                     Text(
                         "NEW",
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -335,10 +483,7 @@ private fun PendingRequestCard(
                 )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 request.preferredDate?.let {
                     InfoChip(Icons.Default.CalendarToday, formatDate(it.toDate().time))
                 }
@@ -347,7 +492,6 @@ private fun PendingRequestCard(
 
             HorizontalDivider(thickness = 1.dp, color = BluePrimary.copy(alpha = 0.08f))
 
-            // Accept button
             Button(
                 onClick = { accepting = true; onAccept() },
                 modifier = Modifier.fillMaxWidth(),
@@ -356,25 +500,13 @@ private fun PendingRequestCard(
                 enabled = !accepting
             ) {
                 if (accepting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.White
-                    )
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Accepting…",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Text("Accepting…", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 } else {
                     Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Accept Request",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Text("Accept Request", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -384,6 +516,7 @@ private fun PendingRequestCard(
 // ─────────────────────────────────────────────────────────────────────────────
 // Accepted / In Progress / Completed card
 // ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun ProviderRequestCard(
     request: ServiceRequest,
@@ -392,8 +525,8 @@ private fun ProviderRequestCard(
     onDecline: () -> Unit
 ) {
     var showDeclineDialog by remember { mutableStateOf(false) }
-    var beginningWork     by remember { mutableStateOf(false) }
-    var completing        by remember { mutableStateOf(false) }
+    var beginningWork by remember { mutableStateOf(false) }
+    var completing by remember { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier
@@ -406,7 +539,6 @@ private fun ProviderRequestCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -418,17 +550,8 @@ private fun ProviderRequestCard(
                 ) {
                     AvatarCircle(request.memberName, 40)
                     Column {
-                        Text(
-                            request.memberName,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = OnSurfaceLight
-                        )
-                        Text(
-                            request.serviceType,
-                            fontSize = 13.sp,
-                            color = Color(0xFF666666)
-                        )
+                        Text(request.memberName, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = OnSurfaceLight)
+                        Text(request.serviceType, fontSize = 13.sp, color = Color(0xFF666666))
                     }
                 }
                 StatusBadge(request.status)
@@ -439,12 +562,7 @@ private fun ProviderRequestCard(
             }
 
             if (request.title.isNotEmpty()) {
-                Text(
-                    request.title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = OnSurfaceLight
-                )
+                Text(request.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = OnSurfaceLight)
             }
 
             if (request.description.isNotEmpty()) {
@@ -456,31 +574,18 @@ private fun ProviderRequestCard(
                 )
             }
 
-            // Date / time chips
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 request.preferredDate?.let {
                     InfoChip(Icons.Default.CalendarToday, formatDate(it.toDate().time))
                 }
                 InfoChip(Icons.Default.AccessTime, formatTimestamp(request.createdAt.toDate().time))
-                if (request.status == ServiceRequest.STATUS_IN_PROGRESS && request.acceptedAt != null) {
-                    InfoChip(
-                        Icons.Default.CheckCircle,
-                        "Accepted ${formatTimestamp(request.acceptedAt.toDate().time)}"
-                    )
-                }
             }
 
             if (request.status != ServiceRequest.STATUS_COMPLETED) {
                 HorizontalDivider(thickness = 1.dp, color = BluePrimary.copy(alpha = 0.08f))
             }
 
-            // ── Action section per status ─────────────────────────────────
             when (request.status) {
-
-                // ── ACCEPTED: Begin Work / Decline ────────────────────────
                 ServiceRequest.STATUS_ACCEPTED -> {
                     Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
@@ -493,7 +598,6 @@ private fun ProviderRequestCard(
                             Spacer(Modifier.width(4.dp))
                             Text("Decline", fontSize = 14.sp)
                         }
-
                         Button(
                             onClick = { beginningWork = true; onBeginWork() },
                             modifier = Modifier.weight(1f),
@@ -502,29 +606,19 @@ private fun ProviderRequestCard(
                             enabled = !beginningWork
                         ) {
                             if (beginningWork) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color.White
-                                )
+                                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Color.White)
                                 Spacer(Modifier.width(6.dp))
                                 Text("Starting…", fontSize = 14.sp)
                             } else {
                                 Icon(Icons.Default.PlayArrow, null, Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text(
-                                    "Begin Work",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                Text("Begin Work", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
                 }
 
-                // ── IN PROGRESS: Mark as Complete ─────────────────────────
                 ServiceRequest.STATUS_IN_PROGRESS -> {
-                    // Status banner
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = Color(0xFF2196F3).copy(alpha = 0.08f),
@@ -538,45 +632,31 @@ private fun ProviderRequestCard(
                             Icon(Icons.Default.Loop, null, Modifier.size(16.dp), Color(0xFF2196F3))
                             Text(
                                 "Work is currently in progress",
-                                fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
                                 color = Color(0xFF2196F3)
                             )
                         }
                     }
-
                     Button(
                         onClick = { completing = true; onMarkComplete() },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
                         enabled = !completing
                     ) {
                         if (completing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = Color.White
-                            )
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
                             Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Completing…",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Text("Completing…", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         } else {
                             Icon(Icons.Default.CheckCircle, null, Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Mark as Complete",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Text("Mark as Complete", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
 
-                // ── COMPLETED ─────────────────────────────────────────────
                 ServiceRequest.STATUS_COMPLETED -> {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
@@ -590,42 +670,20 @@ private fun ProviderRequestCard(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                null,
-                                tint = Color(0xFF4CAF50),
-                                modifier = Modifier.size(20.dp)
-                            )
+                            Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
                             Column {
-                                Text(
-                                    "Job Completed",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF4CAF50)
-                                )
+                                Text("Job Completed", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF4CAF50))
                                 request.completedAt?.let {
-                                    Text(
-                                        formatDate(it.toDate().time),
-                                        fontSize = 12.sp,
-                                        color = Color(0xFF666666)
-                                    )
+                                    Text(formatDate(it.toDate().time), fontSize = 12.sp, color = Color(0xFF666666))
                                 }
                             }
                         }
                     }
 
                     if (request.rating != null) {
-                        HorizontalDivider(
-                            thickness = 1.dp,
-                            color = Color(0xFFFFC107).copy(alpha = 0.3f)
-                        )
+                        HorizontalDivider(thickness = 1.dp, color = Color(0xFFFFC107).copy(alpha = 0.3f))
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                "Member's Rating",
-                                fontSize = 11.sp,
-                                color = Color(0xFF999999),
-                                fontWeight = FontWeight.Medium
-                            )
+                            Text("Member's Rating", fontSize = 11.sp, color = Color(0xFF999999), fontWeight = FontWeight.Medium)
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -657,11 +715,7 @@ private fun ProviderRequestCard(
                             }
                         }
                     } else {
-                        Text(
-                            "Awaiting member rating…",
-                            fontSize = 12.sp,
-                            color = Color(0xFF999999)
-                        )
+                        Text("Awaiting member rating…", fontSize = 12.sp, color = Color(0xFF999999))
                     }
                 }
             }
@@ -673,24 +727,15 @@ private fun ProviderRequestCard(
             onDismissRequest = { showDeclineDialog = false },
             title = { Text("Decline Job?", fontWeight = FontWeight.Bold) },
             text = {
-                Text(
-                    "Are you sure you want to decline \"${request.title}\"? " +
-                            "It will be returned to the queue for another provider."
-                )
+                Text("Are you sure you want to decline \"${request.title}\"? It will return to the queue for another provider.")
             },
             confirmButton = {
                 TextButton(onClick = { onDecline(); showDeclineDialog = false }) {
-                    Text(
-                        "Yes, Decline",
-                        color = Color(0xFFD32F2F),
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("Yes, Decline", color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeclineDialog = false }) {
-                    Text("Keep Job")
-                }
+                TextButton(onClick = { showDeclineDialog = false }) { Text("Keep Job") }
             },
             shape = RoundedCornerShape(16.dp)
         )
@@ -698,16 +743,12 @@ private fun ProviderRequestCard(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Reusable composables
+// Reusable composables (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun AvatarCircle(name: String, sizeDp: Int) {
-    Surface(
-        modifier = Modifier.size(sizeDp.dp),
-        shape = CircleShape,
-        color = BluePrimary.copy(alpha = 0.15f)
-    ) {
+    Surface(modifier = Modifier.size(sizeDp.dp), shape = CircleShape, color = BluePrimary.copy(alpha = 0.15f)) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = name.firstOrNull()?.uppercase() ?: "?",
@@ -721,16 +762,8 @@ private fun AvatarCircle(name: String, sizeDp: Int) {
 
 @Composable
 private fun IconText(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            icon,
-            null,
-            modifier = Modifier.size(13.dp),
-            tint = Color(0xFF999999)
-        )
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, modifier = Modifier.size(13.dp), tint = Color(0xFF999999))
         Text(text, fontSize = 12.sp, color = Color(0xFF999999))
     }
 }
@@ -759,16 +792,8 @@ private fun StatusBadge(status: String) {
 
 @Composable
 private fun InfoChip(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            icon,
-            null,
-            modifier = Modifier.size(16.dp),
-            tint = Color(0xFF666666)
-        )
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, modifier = Modifier.size(16.dp), tint = Color(0xFF666666))
         Text(text, fontSize = 13.sp, color = Color(0xFF666666))
     }
 }

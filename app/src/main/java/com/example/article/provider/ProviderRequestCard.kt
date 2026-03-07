@@ -1,6 +1,5 @@
 package com.example.article.provider
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -32,10 +31,18 @@ fun ProviderRequestCard(
     onAccept: () -> Unit,
     onComplete: () -> Unit,
     onStartWork: () -> Unit = {},
-    onDecline: () -> Unit = {}
+    onDecline: () -> Unit = {},
+    // Optional: pass the provider's neighbourhood name to show a
+    // "same neighbourhood" confirmation tag on the card.
+    providerNeighbourhoodName: String? = null
 ) {
     var isPressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (isPressed) 0.98f else 1f)
+
+    // True when the request comes from a member in the provider's own neighbourhood
+    val isSameNeighbourhood = providerNeighbourhoodName != null &&
+            request.memberNeighborhood.isNotBlank() &&
+            request.memberNeighborhood.equals(providerNeighbourhoodName, ignoreCase = true)
 
     Surface(
         modifier = Modifier
@@ -45,32 +52,32 @@ fun ProviderRequestCard(
                 elevation = if (request.status == ServiceRequest.STATUS_PENDING) 8.dp else 4.dp,
                 shape = RoundedCornerShape(20.dp),
                 spotColor = when (request.status) {
-                    ServiceRequest.STATUS_PENDING -> Color(0xFFFF9800).copy(alpha = 0.4f)
-                    ServiceRequest.STATUS_ACCEPTED -> BluePrimary.copy(alpha = 0.3f)
+                    ServiceRequest.STATUS_PENDING    -> Color(0xFFFF9800).copy(alpha = 0.4f)
+                    ServiceRequest.STATUS_ACCEPTED   -> BluePrimary.copy(alpha = 0.3f)
                     ServiceRequest.STATUS_IN_PROGRESS -> Color(0xFF2196F3).copy(alpha = 0.3f)
-                    ServiceRequest.STATUS_COMPLETED -> Color(0xFF4CAF50).copy(alpha = 0.2f)
-                    else -> Color.Black.copy(alpha = 0.1f)
+                    ServiceRequest.STATUS_COMPLETED  -> Color(0xFF4CAF50).copy(alpha = 0.2f)
+                    else                             -> Color.Black.copy(alpha = 0.1f)
                 }
             ),
         shape = RoundedCornerShape(20.dp),
         color = SurfaceLight,
         tonalElevation = 2.dp
     ) {
-        // Status accent bar on left
         Row(modifier = Modifier.fillMaxWidth()) {
-            // Colored left border
+
+            // ── Coloured left accent bar ──────────────────────────────────
             Box(
                 modifier = Modifier
                     .width(5.dp)
                     .fillMaxHeight()
                     .background(
                         when (request.status) {
-                            ServiceRequest.STATUS_PENDING -> Color(0xFFFF9800)
-                            ServiceRequest.STATUS_ACCEPTED -> BluePrimary
+                            ServiceRequest.STATUS_PENDING     -> Color(0xFFFF9800)
+                            ServiceRequest.STATUS_ACCEPTED    -> BluePrimary
                             ServiceRequest.STATUS_IN_PROGRESS -> Color(0xFF2196F3)
-                            ServiceRequest.STATUS_COMPLETED -> Color(0xFF4CAF50)
-                            ServiceRequest.STATUS_CANCELLED -> Color(0xFFD32F2F)
-                            else -> Color.Transparent
+                            ServiceRequest.STATUS_COMPLETED   -> Color(0xFF4CAF50)
+                            ServiceRequest.STATUS_CANCELLED   -> Color(0xFFD32F2F)
+                            else                              -> Color.Transparent
                         }
                     )
             )
@@ -81,19 +88,19 @@ fun ProviderRequestCard(
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Header: Member info + Status badge
+
+                // ── Header: member info + status badge ────────────────────
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Top
                 ) {
-                    // Member Avatar & Info
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.weight(1f)
                     ) {
-                        // Gradient Avatar
+                        // Gradient avatar
                         Box(
                             modifier = Modifier
                                 .size(52.dp)
@@ -125,7 +132,6 @@ fun ProviderRequestCard(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-
                             // Service type chip
                             Surface(
                                 color = BluePrimary.copy(alpha = 0.12f),
@@ -137,8 +143,7 @@ fun ProviderRequestCard(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        Icons.Default.Build,
-                                        contentDescription = null,
+                                        Icons.Default.Build, null,
                                         modifier = Modifier.size(12.dp),
                                         tint = BluePrimary
                                     )
@@ -153,11 +158,10 @@ fun ProviderRequestCard(
                         }
                     }
 
-                    // Status Badge
                     PremiumStatusBadge(request.status)
                 }
 
-                // Title
+                // ── Title ─────────────────────────────────────────────────
                 if (request.title.isNotEmpty()) {
                     Text(
                         text = request.title,
@@ -168,7 +172,7 @@ fun ProviderRequestCard(
                     )
                 }
 
-                // Description
+                // ── Description ───────────────────────────────────────────
                 if (request.description.isNotEmpty()) {
                     Text(
                         text = request.description,
@@ -180,12 +184,11 @@ fun ProviderRequestCard(
                     )
                 }
 
-                // Date & Time Info
+                // ── Date & time chips ─────────────────────────────────────
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Preferred Date
                     request.preferredDate?.let {
                         PremiumInfoChip(
                             icon = Icons.Default.CalendarToday,
@@ -193,8 +196,6 @@ fun ProviderRequestCard(
                             containerColor = Color(0xFFFFF3E0)
                         )
                     }
-
-                    // Posted time
                     PremiumInfoChip(
                         icon = Icons.Default.AccessTime,
                         text = formatTimestamp(request.createdAt.toDate().time),
@@ -202,44 +203,56 @@ fun ProviderRequestCard(
                     )
                 }
 
-                // Neighborhood badge
+                // ── Location row ──────────────────────────────────────────
                 if (request.memberNeighborhood.isNotEmpty()) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Default.LocationOn,
-                            contentDescription = null,
+                            Icons.Default.LocationOn, null,
                             modifier = Modifier.size(14.dp),
-                            tint = Color(0xFF999999)
+                            tint = if (isSameNeighbourhood) BluePrimary else Color(0xFF999999)
                         )
                         Text(
                             text = request.memberNeighborhood,
                             fontSize = 12.sp,
-                            color = Color(0xFF999999),
-                            fontWeight = FontWeight.Medium
+                            color = if (isSameNeighbourhood) BluePrimary else Color(0xFF999999),
+                            fontWeight = if (isSameNeighbourhood) FontWeight.SemiBold else FontWeight.Normal
                         )
+                        // "Your neighbourhood" badge — only shown when it's a match
+                        if (isSameNeighbourhood) {
+                            Surface(
+                                color = BluePrimary.copy(alpha = 0.10f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = "Your neighbourhood",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = BluePrimary,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
                     }
                 }
 
-                // Divider before actions
+                // ── Divider before actions ────────────────────────────────
                 if (request.status != ServiceRequest.STATUS_COMPLETED &&
-                    request.status != ServiceRequest.STATUS_CANCELLED) {
-                    HorizontalDivider(
-                        thickness = 1.dp,
-                        color = BluePrimary.copy(alpha = 0.08f)
-                    )
+                    request.status != ServiceRequest.STATUS_CANCELLED
+                ) {
+                    HorizontalDivider(thickness = 1.dp, color = BluePrimary.copy(alpha = 0.08f))
                 }
 
-                // Action Buttons
+                // ── Action buttons ────────────────────────────────────────
                 when (request.status) {
+
                     ServiceRequest.STATUS_PENDING -> {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            // Decline Button
                             OutlinedButton(
                                 onClick = onDecline,
                                 modifier = Modifier.weight(1f).height(48.dp),
@@ -247,27 +260,19 @@ fun ProviderRequestCard(
                                 colors = ButtonDefaults.outlinedButtonColors(
                                     contentColor = Color(0xFFD32F2F)
                                 ),
-                                border = ButtonDefaults.outlinedButtonBorder.copy(
-                                    width = 1.5.dp
-                                )
+                                border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.5.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Icon(Icons.Default.Close, null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("Decline", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             }
 
-                            // Accept Button with Gradient
+                            // Gradient accept button
                             Button(
                                 onClick = onAccept,
                                 modifier = Modifier.weight(1f).height(48.dp),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.Transparent
-                                ),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
                                 contentPadding = PaddingValues(0.dp),
                                 elevation = ButtonDefaults.buttonElevation(
                                     defaultElevation = 4.dp,
@@ -288,19 +293,9 @@ fun ProviderRequestCard(
                                         horizontalArrangement = Arrangement.Center,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            Icons.Default.CheckCircle,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                            tint = Color.White
-                                        )
+                                        Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp), Color.White)
                                         Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            "Accept",
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
+                                        Text("Accept", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                     }
                                 }
                             }
@@ -319,21 +314,14 @@ fun ProviderRequestCard(
                             ) {
                                 Text("Decline", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             }
-
                             Button(
                                 onClick = onStartWork,
                                 modifier = Modifier.weight(1f).height(48.dp),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = BluePrimary
-                                ),
+                                colors = ButtonDefaults.buttonColors(containerColor = BluePrimary),
                                 elevation = ButtonDefaults.buttonElevation(4.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("Start Work", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
@@ -345,41 +333,27 @@ fun ProviderRequestCard(
                             onClick = onComplete,
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF4CAF50)
-                            ),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                             elevation = ButtonDefaults.buttonElevation(6.dp)
                         ) {
-                            Icon(
-                                Icons.Default.Done,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
+                            Icon(Icons.Default.Done, null, Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Mark as Completed",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Text("Mark as Completed", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
                     ServiceRequest.STATUS_COMPLETED -> {
-                        // Completion Badge
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = Color(0xFF4CAF50).copy(alpha = 0.1f)
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = null,
+                                    Icons.Default.CheckCircle, null,
                                     tint = Color(0xFF4CAF50),
                                     modifier = Modifier.size(24.dp)
                                 )
@@ -409,25 +383,13 @@ fun ProviderRequestCard(
                             color = Color(0xFFD32F2F).copy(alpha = 0.1f)
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    Icons.Default.Cancel,
-                                    contentDescription = null,
-                                    tint = Color(0xFFD32F2F),
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                Icon(Icons.Default.Cancel, null, tint = Color(0xFFD32F2F), modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text(
-                                    "Request Cancelled",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFD32F2F)
-                                )
+                                Text("Request Cancelled", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFD32F2F))
                             }
                         }
                     }
@@ -437,62 +399,28 @@ fun ProviderRequestCard(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Private composables (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun PremiumStatusBadge(status: String) {
     val (backgroundColor, textColor, icon, text) = when (status) {
-        ServiceRequest.STATUS_PENDING -> listOf(
-            Color(0xFFFF9800).copy(alpha = 0.15f),
-            Color(0xFFFF9800),
-            Icons.Default.Schedule,
-            "PENDING"
-        )
-        ServiceRequest.STATUS_ACCEPTED -> listOf(
-            BluePrimary.copy(alpha = 0.15f),
-            BluePrimary,
-            Icons.Default.CheckCircle,
-            "ACCEPTED"
-        )
-        ServiceRequest.STATUS_IN_PROGRESS -> listOf(
-            Color(0xFF2196F3).copy(alpha = 0.15f),
-            Color(0xFF2196F3),
-            Icons.Default.Loop,
-            "IN PROGRESS"
-        )
-        ServiceRequest.STATUS_COMPLETED -> listOf(
-            Color(0xFF4CAF50).copy(alpha = 0.15f),
-            Color(0xFF4CAF50),
-            Icons.Default.Done,
-            "COMPLETED"
-        )
-        ServiceRequest.STATUS_CANCELLED -> listOf(
-            Color(0xFFD32F2F).copy(alpha = 0.15f),
-            Color(0xFFD32F2F),
-            Icons.Default.Cancel,
-            "CANCELLED"
-        )
-        else -> listOf(
-            Color(0xFF999999).copy(alpha = 0.15f),
-            Color(0xFF999999),
-            Icons.Default.Info,
-            status.uppercase()
-        )
+        ServiceRequest.STATUS_PENDING     -> listOf(Color(0xFFFF9800).copy(alpha = 0.15f), Color(0xFFFF9800),    Icons.Default.Schedule,    "PENDING")
+        ServiceRequest.STATUS_ACCEPTED    -> listOf(BluePrimary.copy(alpha = 0.15f),       BluePrimary,          Icons.Default.CheckCircle, "ACCEPTED")
+        ServiceRequest.STATUS_IN_PROGRESS -> listOf(Color(0xFF2196F3).copy(alpha = 0.15f), Color(0xFF2196F3),    Icons.Default.Loop,        "IN PROGRESS")
+        ServiceRequest.STATUS_COMPLETED   -> listOf(Color(0xFF4CAF50).copy(alpha = 0.15f), Color(0xFF4CAF50),    Icons.Default.Done,        "COMPLETED")
+        ServiceRequest.STATUS_CANCELLED   -> listOf(Color(0xFFD32F2F).copy(alpha = 0.15f), Color(0xFFD32F2F),    Icons.Default.Cancel,      "CANCELLED")
+        else                              -> listOf(Color(0xFF999999).copy(alpha = 0.15f), Color(0xFF999999),    Icons.Default.Info,        status.uppercase())
     }
 
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = backgroundColor as Color
-    ) {
+    Surface(shape = RoundedCornerShape(10.dp), color = backgroundColor as Color) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                icon as androidx.compose.ui.graphics.vector.ImageVector,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = textColor as Color
-            )
+            Icon(icon as androidx.compose.ui.graphics.vector.ImageVector, null, Modifier.size(14.dp), textColor as Color)
             Text(
                 text = text as String,
                 fontSize = 11.sp,
@@ -510,42 +438,26 @@ private fun PremiumInfoChip(
     text: String,
     containerColor: Color
 ) {
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = containerColor
-    ) {
+    Surface(shape = RoundedCornerShape(10.dp), color = containerColor) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = Color(0xFF666666)
-            )
-            Text(
-                text = text,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF333333)
-            )
+            Icon(icon, null, modifier = Modifier.size(14.dp), tint = Color(0xFF666666))
+            Text(text, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF333333))
         }
     }
 }
 
-private fun formatDate(timestamp: Long): String {
-    val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
-    return sdf.format(Date(timestamp))
-}
+private fun formatDate(timestamp: Long): String =
+    SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(timestamp))
 
 private fun formatTimestamp(timestamp: Long): String {
-    val now = System.currentTimeMillis()
-    val diff = now - timestamp
+    val diff = System.currentTimeMillis() - timestamp
     return when {
-        diff < 3600_000 -> "${diff / 60_000}m ago"
-        diff < 86400_000 -> "${diff / 3600_000}h ago"
-        else -> "${diff / 86400_000}d ago"
+        diff < 3_600_000  -> "${diff / 60_000}m ago"
+        diff < 86_400_000 -> "${diff / 3_600_000}h ago"
+        else              -> "${diff / 86_400_000}d ago"
     }
 }

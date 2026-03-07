@@ -35,6 +35,7 @@ import com.example.article.provider.ProviderBottomBar
 import com.example.article.provider.ProviderInboxScreen
 import com.example.article.provider.ProviderProfileScreen
 import com.example.article.provider.ProviderRequestsScreen
+import com.example.article.provider.ProviderSearchScreen
 import com.example.article.chat.EnhancedChatScreen
 import com.example.article.ui.screens.LoginScreen
 import com.example.article.ui.theme.ArticleTheme
@@ -177,6 +178,10 @@ private fun ProviderApp(
 
             composable("provider_home") {
                 ProviderRequestsScreen()
+            }
+
+            composable("provider_search") {
+                ProviderSearchScreen()
             }
 
             composable("provider_inbox") {
@@ -485,7 +490,7 @@ private fun AdminApp(
                     onNavigateToModeration = {
                         navController.navigate("content_moderation")
                     },
-                    onNavigateToJoinRequests = {                  // NEW
+                    onNavigateToJoinRequests = {
                         navController.navigate("join_requests")
                     }
                 )
@@ -515,7 +520,7 @@ private fun AdminApp(
                 )
             }
 
-            composable("join_requests") {                         // NEW
+            composable("join_requests") {
                 JoinRequestsScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )

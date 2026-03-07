@@ -26,7 +26,7 @@ fun ProviderBottomBar(navController: NavHostController) {
         containerColor = SurfaceLight,
         tonalElevation = 3.dp
     ) {
-        // Requests (Home for providers)
+        // ── Requests ──────────────────────────────────────────────────────
         NavigationBarItem(
             selected = currentRoute == "provider_home",
             onClick = {
@@ -34,9 +34,7 @@ fun ProviderBottomBar(navController: NavHostController) {
                     navController.navigate("provider_home") {
                         launchSingleTop = true
                         restoreState = true
-                        popUpTo(navController.graph.startDestinationId) {
-                            saveState = true
-                        }
+                        popUpTo(navController.graph.startDestinationId) { saveState = true }
                     }
                 }
             },
@@ -63,7 +61,42 @@ fun ProviderBottomBar(navController: NavHostController) {
             )
         )
 
-        // Chats/Inbox
+        // ── Search ────────────────────────────────────────────────────────
+        NavigationBarItem(
+            selected = currentRoute == "provider_search",
+            onClick = {
+                if (currentRoute != "provider_search") {
+                    navController.navigate("provider_search") {
+                        launchSingleTop = true
+                        restoreState = true
+                        popUpTo(navController.graph.startDestinationId) { saveState = true }
+                    }
+                }
+            },
+            icon = {
+                Icon(
+                    Icons.Default.Search,
+                    contentDescription = "Search",
+                    modifier = Modifier.size(24.dp)
+                )
+            },
+            label = {
+                Text(
+                    "Search",
+                    fontSize = 12.sp,
+                    fontWeight = if (currentRoute == "provider_search") FontWeight.SemiBold else FontWeight.Normal
+                )
+            },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = BluePrimary,
+                selectedTextColor = BluePrimary,
+                indicatorColor = BluePrimary.copy(alpha = 0.15f),
+                unselectedIconColor = Color(0xFF999999),
+                unselectedTextColor = Color(0xFF999999)
+            )
+        )
+
+        // ── Chats ─────────────────────────────────────────────────────────
         NavigationBarItem(
             selected = currentRoute == "provider_inbox",
             onClick = {
@@ -71,9 +104,7 @@ fun ProviderBottomBar(navController: NavHostController) {
                     navController.navigate("provider_inbox") {
                         launchSingleTop = true
                         restoreState = true
-                        popUpTo(navController.graph.startDestinationId) {
-                            saveState = true
-                        }
+                        popUpTo(navController.graph.startDestinationId) { saveState = true }
                     }
                 }
             },
@@ -100,7 +131,7 @@ fun ProviderBottomBar(navController: NavHostController) {
             )
         )
 
-        // Profile
+        // ── Profile ───────────────────────────────────────────────────────
         NavigationBarItem(
             selected = currentRoute == "provider_profile",
             onClick = {
@@ -108,9 +139,7 @@ fun ProviderBottomBar(navController: NavHostController) {
                     navController.navigate("provider_profile") {
                         launchSingleTop = true
                         restoreState = true
-                        popUpTo(navController.graph.startDestinationId) {
-                            saveState = true
-                        }
+                        popUpTo(navController.graph.startDestinationId) { saveState = true }
                     }
                 }
             },

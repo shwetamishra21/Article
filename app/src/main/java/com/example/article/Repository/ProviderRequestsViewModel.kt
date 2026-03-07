@@ -18,7 +18,7 @@ class ProviderRequestsViewModel(
     private val _requests = MutableStateFlow<List<ServiceRequest>>(emptyList())
     val requests: StateFlow<List<ServiceRequest>> = _requests.asStateFlow()
 
-    // Pending requests available to claim
+    // Pending requests from ALL provider neighbourhoods combined
     private val _pendingRequests = MutableStateFlow<List<ServiceRequest>>(emptyList())
     val pendingRequests: StateFlow<List<ServiceRequest>> = _pendingRequests.asStateFlow()
 
@@ -30,6 +30,14 @@ class ProviderRequestsViewModel(
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    // All neighbourhoods this provider has been approved into (replaces single _providerNeighbourhood)
+    private val _providerNeighbourhoods = MutableStateFlow<List<Neighbourhood>>(emptyList())
+    val providerNeighbourhoods: StateFlow<List<Neighbourhood>> = _providerNeighbourhoods.asStateFlow()
+
+    // True when the provider has no approved neighbourhood at all
+    private val _noNeighbourhood = MutableStateFlow(false)
+    val noNeighbourhood: StateFlow<Boolean> = _noNeighbourhood.asStateFlow()
 
     companion object {
         private const val TAG = "ProviderRequestsVM"
@@ -55,17 +63,67 @@ class ProviderRequestsViewModel(
     }
 
     /**
-     * Load open/pending requests the provider can claim.
-     * Pass provider's service type to show only matching requests.
+     * Load open/pending requests from ALL neighbourhoods this provider belongs to.
+     *
+     * Flow:
+     *  1. Query join_requests for this provider where status == "approved"
+     *  2. If none → set _noNeighbourhood = true, show join prompt
+     *  3. For each approved neighbourhood, fetch its member UIDs
+     *  4. Merge all UIDs into one deduplicated set
+     *  5. Subscribe to pending requests whose memberId is in that merged set
+     *
+     * Pass serviceType to further narrow results to a matching trade.
      */
     fun loadPendingRequests(serviceType: String? = null) {
         viewModelScope.launch {
             _pendingLoading.value = true
+            _noNeighbourhood.value = false
+
+            val providerId = UserSessionManager.getCurrentUid()
+            if (providerId == null) {
+                _noNeighbourhood.value = true
+                _pendingLoading.value = false
+                return@launch
+            }
+
+            // Step 1: get all approved neighbourhoods for this provider
+            val neighResult = NeighbourhoodRepository.getApprovedNeighbourhoodsForProvider(providerId)
+            val neighbourhoods = neighResult.getOrNull() ?: emptyList()
+
+            if (neighbourhoods.isEmpty()) {
+                Log.d(TAG, "Provider has no approved neighbourhoods — showing join prompt")
+                _noNeighbourhood.value = true
+                _providerNeighbourhoods.value = emptyList()
+                _pendingRequests.value = emptyList()
+                _pendingLoading.value = false
+                return@launch
+            }
+
+            _providerNeighbourhoods.value = neighbourhoods
+            Log.d(TAG, "Provider is in ${neighbourhoods.size} neighbourhood(s): ${neighbourhoods.map { it.name }}")
+
+            // Step 2: collect member UIDs from all neighbourhoods (deduplicated)
+            val allMemberUids = mutableSetOf<String>()
+            for (neighbourhood in neighbourhoods) {
+                val uidsResult = NeighbourhoodRepository.getMemberUidsOfNeighbourhood(neighbourhood.id)
+                uidsResult.getOrNull()?.let { allMemberUids.addAll(it) }
+            }
+
+            Log.d(TAG, "Total unique member UIDs across all neighbourhoods: ${allMemberUids.size}")
+
+            if (allMemberUids.isEmpty()) {
+                _pendingRequests.value = emptyList()
+                _pendingLoading.value = false
+                return@launch
+            }
+
+            // Step 3: subscribe to live pending requests filtered to those UIDs
             try {
-                repository.getPendingRequests(serviceType).collect { list ->
-                    _pendingRequests.value = list
-                    _pendingLoading.value = false
-                }
+                repository.getPendingRequestsForNeighbourhood(allMemberUids.toList(), serviceType)
+                    .collect { list ->
+                        _pendingRequests.value = list
+                        _pendingLoading.value = false
+                    }
             } catch (e: Exception) {
                 Log.e(TAG, "loadPendingRequests error", e)
                 _error.value = e.message ?: "Failed to load available requests"
@@ -74,9 +132,6 @@ class ProviderRequestsViewModel(
         }
     }
 
-    /**
-     * Accept a pending request. Pulls provider info from UserSessionManager.
-     */
     fun accept(requestId: String, providerId: String) {
         viewModelScope.launch {
             val providerName = UserSessionManager.currentUser.value?.name
@@ -93,9 +148,6 @@ class ProviderRequestsViewModel(
         }
     }
 
-    /**
-     * Start working — transitions accepted → in_progress.
-     */
     fun startWork(requestId: String) {
         viewModelScope.launch {
             val result = repository.startWork(requestId)
@@ -106,9 +158,6 @@ class ProviderRequestsViewModel(
         }
     }
 
-    /**
-     * Mark request as completed.
-     */
     fun complete(requestId: String, providerId: String) {
         viewModelScope.launch {
             val result = repository.completeRequest(requestId)
@@ -118,9 +167,7 @@ class ProviderRequestsViewModel(
             }
         }
     }
-    /**
-     * Decline an accepted/in_progress request — resets it to pending.
-     */
+
     fun decline(requestId: String) {
         viewModelScope.launch {
             val result = repository.declineRequest(requestId, byProvider = true)
@@ -130,6 +177,7 @@ class ProviderRequestsViewModel(
             }
         }
     }
+
     fun clearError() {
         _error.value = null
     }

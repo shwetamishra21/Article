@@ -25,7 +25,7 @@ data class JoinRequest(
     val userEmail: String = "",
     val userRole: String = "member",
     val neighbourhoodId: String = "",
-    val status: String = "pending",   // pending | approved | rejected
+    val status: String = "pending",
     val createdAt: Timestamp = Timestamp.now()
 )
 
@@ -38,21 +38,15 @@ object NeighbourhoodRepository {
 
     // ---------- NEIGHBOURHOOD CRUD ----------
 
-    /**
-     * Admin creates a neighbourhood.
-     * Enforces one neighbourhood per admin by checking first.
-     */
     suspend fun createNeighbourhood(
         adminId: String,
         name: String,
         description: String
     ): Result<String> {
         return try {
-            // Enforce one neighbourhood per admin
             val existing = db.collection("neighbourhoods")
                 .whereEqualTo("adminId", adminId)
-                .get()
-                .await()
+                .get().await()
 
             if (!existing.isEmpty) {
                 return Result.failure(Exception("You already have a neighbourhood. Only one neighbourhood per admin is allowed."))
@@ -76,9 +70,6 @@ object NeighbourhoodRepository {
         }
     }
 
-    /**
-     * Fetch all neighbourhoods (for Search screen).
-     */
     suspend fun getAllNeighbourhoods(): Result<List<Neighbourhood>> {
         return try {
             val snapshot = db.collection("neighbourhoods").get().await()
@@ -94,8 +85,7 @@ object NeighbourhoodRepository {
                         createdAt = doc.getTimestamp("createdAt") ?: Timestamp.now()
                     )
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing neighbourhood ${doc.id}", e)
-                    null
+                    Log.e(TAG, "Error parsing neighbourhood ${doc.id}", e); null
                 }
             }
             Result.success(list)
@@ -106,33 +96,99 @@ object NeighbourhoodRepository {
     }
 
     /**
-     * Fetch the neighbourhood created by a specific admin.
+     * Fetch a single neighbourhood by its document ID.
      */
+    suspend fun getNeighbourhoodById(neighbourhoodId: String): Result<Neighbourhood?> {
+        return try {
+            val doc = db.collection("neighbourhoods").document(neighbourhoodId).get().await()
+            if (!doc.exists()) return Result.success(null)
+            Result.success(
+                Neighbourhood(
+                    id = doc.id,
+                    name = doc.getString("name") ?: "",
+                    adminId = doc.getString("adminId") ?: "",
+                    description = doc.getString("description") ?: "",
+                    memberCount = doc.getLong("memberCount")?.toInt() ?: 0,
+                    providerCount = doc.getLong("providerCount")?.toInt() ?: 0,
+                    createdAt = doc.getTimestamp("createdAt") ?: Timestamp.now()
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch neighbourhood by id $neighbourhoodId", e)
+            Result.failure(e)
+        }
+    }
+
     suspend fun getNeighbourhoodByAdmin(adminId: String): Result<Neighbourhood?> {
         return try {
             val snapshot = db.collection("neighbourhoods")
-                .whereEqualTo("adminId", adminId)
-                .get()
-                .await()
+                .whereEqualTo("adminId", adminId).get().await()
 
-            val doc = snapshot.documents.firstOrNull()
-            if (doc == null) {
-                Result.success(null)
-            } else {
-                Result.success(
-                    Neighbourhood(
-                        id = doc.id,
-                        name = doc.getString("name") ?: "",
-                        adminId = doc.getString("adminId") ?: "",
-                        description = doc.getString("description") ?: "",
-                        memberCount = doc.getLong("memberCount")?.toInt() ?: 0,
-                        providerCount = doc.getLong("providerCount")?.toInt() ?: 0,
-                        createdAt = doc.getTimestamp("createdAt") ?: Timestamp.now()
-                    )
+            val doc = snapshot.documents.firstOrNull() ?: return Result.success(null)
+            Result.success(
+                Neighbourhood(
+                    id = doc.id,
+                    name = doc.getString("name") ?: "",
+                    adminId = doc.getString("adminId") ?: "",
+                    description = doc.getString("description") ?: "",
+                    memberCount = doc.getLong("memberCount")?.toInt() ?: 0,
+                    providerCount = doc.getLong("providerCount")?.toInt() ?: 0,
+                    createdAt = doc.getTimestamp("createdAt") ?: Timestamp.now()
                 )
-            }
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch admin neighbourhood", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Returns all Neighbourhood objects a provider has been approved into.
+     * Derived from join_requests (userId == providerId AND status == "approved").
+     * No schema changes needed — providers never get neighbourhoodId written to their user doc.
+     */
+    suspend fun getApprovedNeighbourhoodsForProvider(providerId: String): Result<List<Neighbourhood>> {
+        return try {
+            val snapshot = db.collection("join_requests")
+                .whereEqualTo("userId", providerId)
+                .whereEqualTo("status", "approved")
+                .get().await()
+
+            val neighbourhoodIds = snapshot.documents
+                .mapNotNull { it.getString("neighbourhoodId") }
+                .distinct()
+
+            if (neighbourhoodIds.isEmpty()) return Result.success(emptyList())
+
+            val neighbourhoods = neighbourhoodIds.mapNotNull { neighId ->
+                getNeighbourhoodById(neighId).getOrNull()
+            }
+
+            Log.d(TAG, "Provider $providerId is in ${neighbourhoods.size} neighbourhood(s)")
+            Result.success(neighbourhoods)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch approved neighbourhoods for provider $providerId", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Returns all member UIDs that belong to a given neighbourhood.
+     * Used by providers to filter service requests to their neighbourhood(s).
+     */
+    suspend fun getMemberUidsOfNeighbourhood(neighbourhoodId: String): Result<List<String>> {
+        return try {
+            val snapshot = db.collection("users")
+                .whereEqualTo("neighbourhoodId", neighbourhoodId)
+                .get().await()
+
+            val uids = snapshot.documents.mapNotNull { doc ->
+                doc.getString("uid") ?: doc.id.takeIf { it.isNotBlank() }
+            }
+            Log.d(TAG, "Found ${uids.size} members in neighbourhood $neighbourhoodId")
+            Result.success(uids)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch member UIDs for neighbourhood $neighbourhoodId", e)
             Result.failure(e)
         }
     }
@@ -140,10 +196,13 @@ object NeighbourhoodRepository {
     // ---------- JOIN REQUESTS ----------
 
     /**
-     * User sends a join request to a neighbourhood.
-     * Guards:
-     *  - User can only belong to one neighbourhood
-     *  - No duplicate pending requests
+     * Send a join request.
+     *
+     * Rules:
+     *  - Members:  blocked if already in any neighbourhood (single neighbourhood limit enforced
+     *              via user.neighbourhoodId field)
+     *  - Providers: no single-neighbourhood limit; blocked only if they already have a
+     *              pending OR approved request for THIS specific neighbourhood
      */
     suspend fun sendJoinRequest(
         userId: String,
@@ -153,23 +212,37 @@ object NeighbourhoodRepository {
         neighbourhoodId: String
     ): Result<Unit> {
         return try {
-            // Guard 1: already a member somewhere
-            val userDoc = db.collection("users").document(userId).get().await()
-            val existingNeighId = userDoc.getString("neighbourhoodId") ?: ""
-            if (existingNeighId.isNotEmpty()) {
-                return Result.failure(Exception("You are already a member of a neighbourhood."))
+            // Members only: enforce single-neighbourhood limit
+            if (userRole != "service_provider") {
+                val userDoc = db.collection("users").document(userId).get().await()
+                val existingNeighId = userDoc.getString("neighbourhoodId") ?: ""
+                if (existingNeighId.isNotEmpty()) {
+                    return Result.failure(Exception("You are already a member of a neighbourhood."))
+                }
             }
 
-            // Guard 2: already has a pending request for this neighbourhood
+            // Everyone: block duplicate pending requests for the same neighbourhood
             val pending = db.collection("join_requests")
                 .whereEqualTo("userId", userId)
                 .whereEqualTo("neighbourhoodId", neighbourhoodId)
                 .whereEqualTo("status", "pending")
-                .get()
-                .await()
+                .get().await()
 
             if (!pending.isEmpty) {
                 return Result.failure(Exception("You already have a pending request for this neighbourhood."))
+            }
+
+            // Providers: also block if already approved for this specific neighbourhood
+            if (userRole == "service_provider") {
+                val approved = db.collection("join_requests")
+                    .whereEqualTo("userId", userId)
+                    .whereEqualTo("neighbourhoodId", neighbourhoodId)
+                    .whereEqualTo("status", "approved")
+                    .get().await()
+
+                if (!approved.isEmpty) {
+                    return Result.failure(Exception("You are already a member of this neighbourhood."))
+                }
             }
 
             val data = hashMapOf(
@@ -183,7 +256,7 @@ object NeighbourhoodRepository {
             )
 
             db.collection("join_requests").add(data).await()
-            Log.d(TAG, "Join request sent by $userId to neighbourhood $neighbourhoodId")
+            Log.d(TAG, "Join request sent by $userId ($userRole) to neighbourhood $neighbourhoodId")
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send join request", e)
@@ -191,16 +264,12 @@ object NeighbourhoodRepository {
         }
     }
 
-    /**
-     * Fetch pending join requests for the admin's neighbourhood.
-     */
     suspend fun getPendingRequests(neighbourhoodId: String): Result<List<JoinRequest>> {
         return try {
             val snapshot = db.collection("join_requests")
                 .whereEqualTo("neighbourhoodId", neighbourhoodId)
                 .whereEqualTo("status", "pending")
-                .get()
-                .await()
+                .get().await()
 
             val list = snapshot.documents.mapNotNull { doc ->
                 try {
@@ -215,8 +284,7 @@ object NeighbourhoodRepository {
                         createdAt = doc.getTimestamp("createdAt") ?: Timestamp.now()
                     )
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing join request ${doc.id}", e)
-                    null
+                    Log.e(TAG, "Error parsing join request ${doc.id}", e); null
                 }
             }
             Result.success(list)
@@ -227,32 +295,32 @@ object NeighbourhoodRepository {
     }
 
     /**
-     * Admin approves a join request.
-     * Atomically:
-     *  1. Updates request status → approved
-     *  2. Sets user.neighbourhoodId
-     *  3. Increments memberCount or providerCount
+     * Approve a join request.
+     *
+     * - Members:   writes neighbourhoodId to user doc + increments memberCount (unchanged)
+     * - Providers: does NOT touch user doc (they derive membership from join_requests);
+     *              only increments providerCount
      */
     suspend fun approveRequest(request: JoinRequest): Result<Unit> {
         return try {
             val batch = db.batch()
-
             val requestRef = db.collection("join_requests").document(request.id)
-            val userRef = db.collection("users").document(request.userId)
             val neighRef = db.collection("neighbourhoods").document(request.neighbourhoodId)
 
             batch.update(requestRef, "status", "approved")
-            // Uses "neighbourhoodId" to match your existing Firestore field name
-            batch.update(userRef, "neighbourhoodId", request.neighbourhoodId)
 
             if (request.userRole == "service_provider") {
+                // Providers: don't overwrite user.neighbourhoodId — they can be in multiple
                 batch.update(neighRef, "providerCount", FieldValue.increment(1))
             } else {
+                // Members: set their single neighbourhoodId
+                val userRef = db.collection("users").document(request.userId)
+                batch.update(userRef, "neighbourhoodId", request.neighbourhoodId)
                 batch.update(neighRef, "memberCount", FieldValue.increment(1))
             }
 
             batch.commit().await()
-            Log.d(TAG, "Request ${request.id} approved")
+            Log.d(TAG, "Request ${request.id} approved (role: ${request.userRole})")
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to approve request", e)
@@ -260,15 +328,10 @@ object NeighbourhoodRepository {
         }
     }
 
-    /**
-     * Admin rejects a join request.
-     */
     suspend fun rejectRequest(requestId: String): Result<Unit> {
         return try {
-            db.collection("join_requests")
-                .document(requestId)
-                .update("status", "rejected")
-                .await()
+            db.collection("join_requests").document(requestId)
+                .update("status", "rejected").await()
             Log.d(TAG, "Request $requestId rejected")
             Result.success(Unit)
         } catch (e: Exception) {
@@ -277,12 +340,6 @@ object NeighbourhoodRepository {
         }
     }
 
-    /**
-     * Admin removes a member from their neighbourhood.
-     * Atomically:
-     *  1. Clears user.neighbourhoodId
-     *  2. Decrements memberCount or providerCount
-     */
     suspend fun removeMemberFromNeighbourhood(
         userId: String,
         userRole: String,
@@ -290,20 +347,28 @@ object NeighbourhoodRepository {
     ): Result<Unit> {
         return try {
             val batch = db.batch()
-
-            val userRef = db.collection("users").document(userId)
             val neighRef = db.collection("neighbourhoods").document(neighbourhoodId)
 
-            batch.update(userRef, "neighbourhoodId", "")
-
             if (userRole == "service_provider") {
+                // Providers: mark their approved join_request as removed + decrement count
                 batch.update(neighRef, "providerCount", FieldValue.increment(-1))
+                val approvedSnap = db.collection("join_requests")
+                    .whereEqualTo("userId", userId)
+                    .whereEqualTo("neighbourhoodId", neighbourhoodId)
+                    .whereEqualTo("status", "approved")
+                    .get().await()
+                approvedSnap.documents.forEach { doc ->
+                    batch.update(doc.reference, "status", "removed")
+                }
             } else {
+                // Members: clear user.neighbourhoodId + decrement count
+                val userRef = db.collection("users").document(userId)
+                batch.update(userRef, "neighbourhoodId", "")
                 batch.update(neighRef, "memberCount", FieldValue.increment(-1))
             }
 
             batch.commit().await()
-            Log.d(TAG, "User $userId removed from neighbourhood $neighbourhoodId")
+            Log.d(TAG, "User $userId ($userRole) removed from neighbourhood $neighbourhoodId")
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to remove member from neighbourhood", e)
@@ -311,23 +376,21 @@ object NeighbourhoodRepository {
         }
     }
 
-    /**
-     * Check if a user already has a pending request for a given neighbourhood.
-     * Used by SearchScreen to show correct button state.
-     */
-    suspend fun getUserRequestStatus(
-        userId: String,
-        neighbourhoodId: String
-    ): String {
+    suspend fun getUserRequestStatus(userId: String, neighbourhoodId: String): String {
         return try {
             val snapshot = db.collection("join_requests")
                 .whereEqualTo("userId", userId)
                 .whereEqualTo("neighbourhoodId", neighbourhoodId)
-                .get()
-                .await()
+                .get().await()
 
-            val doc = snapshot.documents.firstOrNull()
-            doc?.getString("status") ?: "none"
+            // Return the most relevant status: approved > pending > rejected > none
+            val statuses = snapshot.documents.mapNotNull { it.getString("status") }
+            when {
+                "approved" in statuses -> "approved"
+                "pending"  in statuses -> "pending"
+                "rejected" in statuses -> "rejected"
+                else                   -> "none"
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to check request status", e)
             "none"
