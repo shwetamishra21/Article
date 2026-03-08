@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.article.UserSessionManager
 import com.example.article.ui.theme.*
 import com.google.firebase.Timestamp
@@ -46,6 +47,18 @@ fun LoginScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var showRoleMenu by remember { mutableStateOf(false) }
 
+    // Password reset state
+    var showForgotPassword by remember { mutableStateOf(false) }
+    var resetEmail by remember { mutableStateOf("") }
+    var resetMessage by remember { mutableStateOf<String?>(null) }
+    var resetIsError by remember { mutableStateOf(false) }
+    var isResetLoading by remember { mutableStateOf(false) }
+
+    // Email verification state
+    var showVerificationDialog by remember { mutableStateOf(false) }
+    var isResendingVerification by remember { mutableStateOf(false) }
+    var resendMessage by remember { mutableStateOf<String?>(null) }
+
     val scope = remember { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main) }
 
     val roleOptions = listOf(
@@ -53,6 +66,272 @@ fun LoginScreen(
         "admin" to "Admin",
         "service_provider" to "Service Provider"
     )
+
+    // ========================================
+    // FORGOT PASSWORD DIALOG
+    // ========================================
+    if (showForgotPassword) {
+        Dialog(onDismissRequest = {
+            if (!isResetLoading) {
+                showForgotPassword = false
+                resetEmail = ""
+                resetMessage = null
+                resetIsError = false
+            }
+        }) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceLight)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Reset Password",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = OnSurfaceLight
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Enter your email address and we'll send you a link to reset your password.",
+                        fontSize = 14.sp,
+                        color = OnSurfaceLight.copy(alpha = 0.7f)
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    OutlinedTextField(
+                        value = resetEmail,
+                        onValueChange = {
+                            resetEmail = it
+                            resetMessage = null
+                        },
+                        label = { Text("Email") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        enabled = !isResetLoading
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Success / error message
+                    if (resetMessage != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (resetIsError)
+                                    ErrorLight.copy(alpha = 0.15f)
+                                else
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = resetMessage!!,
+                                fontSize = 13.sp,
+                                color = if (resetIsError) ErrorLight else OnSurfaceLight,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                showForgotPassword = false
+                                resetEmail = ""
+                                resetMessage = null
+                                resetIsError = false
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = !isResetLoading
+                        ) {
+                            Text("Cancel")
+                        }
+
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    if (resetEmail.isBlank()) {
+                                        resetMessage = "Please enter your email address."
+                                        resetIsError = true
+                                        return@launch
+                                    }
+                                    if (!android.util.Patterns.EMAIL_ADDRESS.matcher(resetEmail).matches()) {
+                                        resetMessage = "Please enter a valid email address."
+                                        resetIsError = true
+                                        return@launch
+                                    }
+                                    isResetLoading = true
+                                    resetMessage = null
+                                    handlePasswordReset(
+                                        auth = auth,
+                                        email = resetEmail.trim(),
+                                        onSuccess = {
+                                            resetMessage = "Password reset email sent! Check your inbox."
+                                            resetIsError = false
+                                            isResetLoading = false
+                                        },
+                                        onError = { error ->
+                                            resetMessage = error
+                                            resetIsError = true
+                                            isResetLoading = false
+                                        }
+                                    )
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = BluePrimary
+                            ),
+                            enabled = !isResetLoading
+                        ) {
+                            if (isResetLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = BlueOnPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text("Send Link", color = BlueOnPrimary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ========================================
+    // EMAIL VERIFICATION DIALOG
+    // ========================================
+    if (showVerificationDialog) {
+        Dialog(onDismissRequest = {
+            if (!isResendingVerification) {
+                showVerificationDialog = false
+                resendMessage = null
+            }
+        }) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceLight)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Verify Your Email",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = OnSurfaceLight
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "A verification link has been sent to:\n$email\n\nPlease check your inbox and verify your email before logging in.",
+                        fontSize = 14.sp,
+                        color = OnSurfaceLight.copy(alpha = 0.7f)
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    if (resendMessage != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = resendMessage!!,
+                                fontSize = 13.sp,
+                                color = OnSurfaceLight,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                showVerificationDialog = false
+                                resendMessage = null
+                                // Switch to login mode so they can sign in after verifying
+                                isSignUp = false
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = !isResendingVerification
+                        ) {
+                            Text("OK")
+                        }
+
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    isResendingVerification = true
+                                    resendMessage = null
+                                    try {
+                                        auth.currentUser?.sendEmailVerification()?.await()
+                                        resendMessage = "Verification email resent!"
+                                    } catch (e: Exception) {
+                                        resendMessage = "Failed to resend. Please try again."
+                                    } finally {
+                                        isResendingVerification = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BluePrimary),
+                            enabled = !isResendingVerification
+                        ) {
+                            if (isResendingVerification) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = BlueOnPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text("Resend", color = BlueOnPrimary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 
     Box(
         modifier = Modifier
@@ -221,6 +500,28 @@ fun LoginScreen(
                 enabled = !isLoading
             )
 
+            // Forgot password link (only on login screen)
+            if (!isSignUp) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    TextButton(
+                        onClick = {
+                            resetEmail = email // pre-fill with whatever user typed
+                            showForgotPassword = true
+                        },
+                        enabled = !isLoading
+                    ) {
+                        Text(
+                            text = "Forgot password?",
+                            color = BlueOnPrimary.copy(alpha = 0.8f),
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             // Error message
@@ -249,7 +550,6 @@ fun LoginScreen(
             Button(
                 onClick = {
                     scope.launch {
-                        // Validation
                         val validationError = validateInput(email, password, name, isSignUp)
                         if (validationError != null) {
                             errorMessage = validationError
@@ -269,8 +569,9 @@ fun LoginScreen(
                                     name = name.trim(),
                                     role = selectedRole,
                                     onSuccess = {
-                                        Log.d("LoginScreen", "SignUp success, navigating...")
-                                        onLoginSuccess()
+                                        Log.d("LoginScreen", "SignUp success, showing verification dialog...")
+                                        isLoading = false
+                                        showVerificationDialog = true
                                     },
                                     onError = { error ->
                                         Log.e("LoginScreen", "SignUp error: $error")
@@ -289,7 +590,12 @@ fun LoginScreen(
                                     },
                                     onError = { error ->
                                         Log.e("LoginScreen", "Login error: $error")
-                                        errorMessage = error
+                                        if (error == "EMAIL_NOT_VERIFIED") {
+                                            isLoading = false
+                                            showVerificationDialog = true
+                                        } else {
+                                            errorMessage = error
+                                        }
                                     }
                                 )
                             }
@@ -333,9 +639,7 @@ fun LoginScreen(
                 onClick = {
                     isSignUp = !isSignUp
                     errorMessage = null
-                    // Reset role to member when switching
                     selectedRole = "member"
-                    // Clear fields when switching
                     if (!isSignUp) {
                         name = ""
                     }
@@ -375,6 +679,30 @@ private fun validateInput(email: String, password: String, name: String, isSignU
 // BACKEND FUNCTIONS
 // ========================================
 
+private suspend fun handlePasswordReset(
+    auth: FirebaseAuth,
+    email: String,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit
+) {
+    try {
+        Log.d("LoginScreen", "Sending password reset email to: $email")
+        auth.sendPasswordResetEmail(email).await()
+        Log.d("LoginScreen", "Password reset email sent successfully")
+        onSuccess()
+    } catch (e: FirebaseAuthInvalidUserException) {
+        Log.e("LoginScreen", "No user found for reset email", e)
+        // Intentionally vague for security — don't confirm whether email exists
+        onSuccess()
+    } catch (e: FirebaseAuthInvalidCredentialsException) {
+        Log.e("LoginScreen", "Invalid email for reset", e)
+        onError("Please enter a valid email address.")
+    } catch (e: Exception) {
+        Log.e("LoginScreen", "Password reset failed", e)
+        onError(e.message ?: "Failed to send reset email. Please try again.")
+    }
+}
+
 private suspend fun handleLogin(
     auth: FirebaseAuth,
     firestore: FirebaseFirestore,
@@ -386,7 +714,6 @@ private suspend fun handleLogin(
     try {
         Log.d("LoginScreen", "Starting login for: $email")
 
-        // 1. Firebase Auth login
         val authResult = auth.signInWithEmailAndPassword(email, password).await()
         val user = authResult.user
 
@@ -398,18 +725,23 @@ private suspend fun handleLogin(
 
         Log.d("LoginScreen", "Auth success, UID: ${user.uid}")
 
-        // 2. Check if profile exists in Firestore
+        // Block login if email is not verified
+        if (!user.isEmailVerified) {
+            Log.w("LoginScreen", "Email not verified for: ${user.email}")
+            auth.signOut()
+            onError("EMAIL_NOT_VERIFIED")
+            return
+        }
+
         val profileDoc = firestore.collection("users").document(user.uid).get().await()
 
         Log.d("LoginScreen", "Profile exists: ${profileDoc.exists()}")
 
-        // 3. Create profile if it doesn't exist (edge case)
         if (!profileDoc.exists()) {
             Log.d("LoginScreen", "Creating missing profile...")
             createUserProfile(user.uid, email, "User", "member", firestore)
         }
 
-        // 4. ALWAYS load profile AFTER creation check
         Log.d("LoginScreen", "Loading profile into session...")
         val result = UserSessionManager.loadUserProfile(user.uid, firestore)
 
@@ -420,8 +752,6 @@ private suspend fun handleLogin(
         }
 
         Log.d("LoginScreen", "Profile loaded successfully")
-
-        // 5. Trigger UI state update
         onSuccess()
 
     } catch (e: FirebaseAuthInvalidUserException) {
@@ -449,7 +779,6 @@ private suspend fun handleSignUp(
     try {
         Log.d("LoginScreen", "Starting signup for: $email with role: $role")
 
-        // 1. Create Firebase Auth account
         val authResult = auth.createUserWithEmailAndPassword(email, password).await()
         val user = authResult.user
 
@@ -461,11 +790,9 @@ private suspend fun handleSignUp(
 
         Log.d("LoginScreen", "Auth account created, UID: ${user.uid}")
 
-        // 2. Create Firestore profile with selected role
         Log.d("LoginScreen", "Creating Firestore profile with role: $role")
         createUserProfile(user.uid, email, name, role, firestore)
 
-        // 3. ALWAYS load profile AFTER creation
         Log.d("LoginScreen", "Loading profile into session...")
         val result = UserSessionManager.loadUserProfile(user.uid, firestore)
 
@@ -483,7 +810,17 @@ private suspend fun handleSignUp(
 
         Log.d("LoginScreen", "Profile loaded successfully")
 
-        // 4. Trigger UI state update
+        // Send verification email — user must verify before logging in
+        try {
+            user.sendEmailVerification().await()
+            Log.d("LoginScreen", "Verification email sent to: ${user.email}")
+        } catch (e: Exception) {
+            Log.w("LoginScreen", "Failed to send verification email", e)
+            // Non-fatal: account is created, verification email can be resent
+        }
+
+        // Sign out immediately — force them to verify before accessing the app
+        auth.signOut()
         onSuccess()
 
     } catch (e: FirebaseAuthWeakPasswordException) {

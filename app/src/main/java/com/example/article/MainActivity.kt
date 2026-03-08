@@ -1,9 +1,13 @@
 package com.example.article
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -17,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavHostController
@@ -31,20 +36,28 @@ import com.example.article.admin.AnnouncementManagementScreen
 import com.example.article.admin.ContentModerationScreen
 import com.example.article.admin.JoinRequestsScreen
 import com.example.article.admin.ProviderApprovalScreen
+import com.example.article.notifications.NotificationScreen
 import com.example.article.provider.ProviderBottomBar
 import com.example.article.provider.ProviderInboxScreen
 import com.example.article.provider.ProviderProfileScreen
 import com.example.article.provider.ProviderRequestsScreen
 import com.example.article.provider.ProviderSearchScreen
-import com.example.article.chat.EnhancedChatScreen
 import com.example.article.ui.screens.LoginScreen
 import com.example.article.ui.theme.ArticleTheme
 import com.google.firebase.FirebaseApp
+import com. example. article. Repository. ArticleFirebaseMessagingService
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            Log.d("MainActivity", "Notification permission granted: $granted")
+            if (granted) ArticleFirebaseMessagingService.saveTokenIfLoggedIn()
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -54,6 +67,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         checkAndLoadProfile()
+        requestNotificationPermissionIfNeeded()
 
         setContent {
             ArticleTheme {
@@ -70,6 +84,15 @@ class MainActivity : ComponentActivity() {
         Log.d("MainActivity", "checkAndLoadProfile - current user: ${currentUser?.email}")
 
         if (currentUser != null) {
+            // If the user's email is not verified, sign them out immediately
+            // and don't attempt to load their profile
+            if (!currentUser.isEmailVerified) {
+                Log.w("MainActivity", "User ${currentUser.email} is not email-verified — signing out")
+                auth.signOut()
+                UserSessionManager.clearSession()
+                return
+            }
+
             lifecycleScope.launch {
                 try {
                     Log.d("MainActivity", "Loading profile for UID: ${currentUser.uid}")
@@ -77,11 +100,9 @@ class MainActivity : ComponentActivity() {
 
                     if (result.isSuccess) {
                         Log.d("MainActivity", "Profile loaded successfully")
+                        ArticleFirebaseMessagingService.saveTokenIfLoggedIn()
                     } else {
-                        Log.e(
-                            "MainActivity",
-                            "Profile load failed: ${result.exceptionOrNull()?.message}"
-                        )
+                        Log.e("MainActivity", "Profile load failed: ${result.exceptionOrNull()?.message}")
                         auth.signOut()
                         UserSessionManager.clearSession()
                     }
@@ -94,6 +115,20 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.d("MainActivity", "No current user, clearing session")
             UserSessionManager.clearSession()
+        }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED
+            ) {
+                ArticleFirebaseMessagingService.saveTokenIfLoggedIn()
+            } else {
+                requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        } else {
+            ArticleFirebaseMessagingService.saveTokenIfLoggedIn()
         }
     }
 }
@@ -121,10 +156,7 @@ fun ArticleApp() {
 
     if (isLoading) {
         Log.d("ArticleApp", "Showing loading screen")
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
         return
@@ -135,9 +167,7 @@ fun ArticleApp() {
         LoginScreen(
             auth = auth,
             firestore = firestore,
-            onLoginSuccess = {
-                Log.d("ArticleApp", "onLoginSuccess callback triggered!")
-            }
+            onLoginSuccess = { Log.d("ArticleApp", "onLoginSuccess callback triggered!") }
         )
     } else {
         when (userRole) {
@@ -145,12 +175,10 @@ fun ArticleApp() {
                 Log.d("ArticleApp", "Showing Service Provider UI")
                 ProviderApp(navController, auth)
             }
-
             UserRole.MEMBER -> {
                 Log.d("ArticleApp", "Showing Member UI")
                 MemberApp(navController, userRole, userNeighborhood, auth)
             }
-
             UserRole.ADMIN -> {
                 Log.d("ArticleApp", "Showing Admin UI")
                 AdminApp(navController, userRole, userNeighborhood, auth)
@@ -160,43 +188,22 @@ fun ArticleApp() {
 }
 
 @Composable
-private fun ProviderApp(
-    navController: NavHostController,
-    auth: FirebaseAuth
-) {
-    Scaffold(
-        bottomBar = {
-            ProviderBottomBar(navController = navController)
-        }
-    ) { innerPadding ->
+private fun ProviderApp(navController: NavHostController, auth: FirebaseAuth) {
+    Scaffold(bottomBar = { ProviderBottomBar(navController = navController) }) { innerPadding ->
+        NavHost(navController, startDestination = "provider_home", modifier = Modifier.padding(innerPadding)) {
 
-        NavHost(
-            navController = navController,
-            startDestination = "provider_home",
-            modifier = Modifier.padding(innerPadding)
-        ) {
-
-            composable("provider_home") {
-                ProviderRequestsScreen()
-            }
-
-            composable("provider_search") {
-                ProviderSearchScreen()
-            }
-
-            composable("provider_inbox") {
-                ProviderInboxScreen(navController = navController)
-            }
-
+            composable("provider_home") { ProviderRequestsScreen() }
+            composable("provider_search") { ProviderSearchScreen() }
+            composable("provider_inbox") { ProviderInboxScreen(navController = navController) }
             composable("provider_profile") {
-                ProviderProfileScreen(
-                    onLogout = {
-                        Log.d("ProviderApp", "Logout triggered")
-                        auth.signOut()
-                        UserSessionManager.clearSession()
-                    }
-                )
+                ProviderProfileScreen(onLogout = {
+                    Log.d("ProviderApp", "Logout triggered")
+                    auth.signOut()
+                    UserSessionManager.clearSession()
+                })
             }
+
+            composable("notifications") { NotificationScreen(navController = navController) }
 
             composable(
                 route = "chat/{chatId}/{otherUserId}/{otherUserName}/{otherUserPhoto}",
@@ -204,10 +211,7 @@ private fun ProviderApp(
                     navArgument("chatId") { type = NavType.StringType },
                     navArgument("otherUserId") { type = NavType.StringType },
                     navArgument("otherUserName") { type = NavType.StringType },
-                    navArgument("otherUserPhoto") {
-                        type = NavType.StringType
-                        defaultValue = ""
-                    }
+                    navArgument("otherUserPhoto") { type = NavType.StringType; defaultValue = "" }
                 )
             ) { backStackEntry ->
                 EnhancedChatScreen(
@@ -222,11 +226,7 @@ private fun ProviderApp(
             composable("view_profile/{userId}/{role}") { backStack ->
                 val userId = backStack.arguments?.getString("userId") ?: return@composable
                 val role = backStack.arguments?.getString("role") ?: return@composable
-                ViewProfileScreen(
-                    navController = navController,
-                    userId = userId,
-                    userRole = role
-                )
+                ViewProfileScreen(navController = navController, userId = userId, userRole = role)
             }
         }
     }
@@ -239,87 +239,36 @@ private fun MemberApp(
     userNeighborhood: String,
     auth: FirebaseAuth
 ) {
-    Scaffold(
-        bottomBar = {
-            BottomBar(
-                navController = navController,
-                role = userRole
-            )
-        }
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = "home",
-            modifier = Modifier.padding(innerPadding)
-        ) {
-            composable("home") {
-                HomeScreen(
-                    navController = navController,
-                    userNeighborhood = userNeighborhood
-                )
-            }
-
-            composable("search") {
-                SearchScreen(navController = navController)
-            }
-
+    Scaffold(bottomBar = { BottomBar(navController = navController, role = userRole) }) { innerPadding ->
+        NavHost(navController, startDestination = "home", modifier = Modifier.padding(innerPadding)) {
+            composable("home") { HomeScreen(navController = navController, userNeighborhood = userNeighborhood) }
+            composable("search") { SearchScreen(navController = navController) }
             composable("inbox") {
-                InboxScreen(
-                    navController = navController,
-                    onCreateRequest = {
-                        navController.navigate("request_form")
-                    }
-                )
+                InboxScreen(navController = navController, onCreateRequest = { navController.navigate("request_form") })
             }
-
             composable("profile") {
                 ProfileScreen(
                     role = userRole,
-                    onLogout = {
-                        Log.d("MemberApp", "Logout triggered")
-                        auth.signOut()
-                        UserSessionManager.clearSession()
-                    },
-                    onCreatePost = {
-                        navController.navigate("new_post")
-                    }
+                    onLogout = { Log.d("MemberApp", "Logout triggered"); auth.signOut(); UserSessionManager.clearSession() },
+                    onCreatePost = { navController.navigate("new_post") }
                 )
             }
-
-            composable("requests") {
-                RequestsScreen(
-                    onCreateNew = {
-                        navController.navigate("request_form")
-                    }
-                )
-            }
-
+            composable("requests") { RequestsScreen(onCreateNew = { navController.navigate("request_form") }) }
             composable("request_form") {
-                RequestFormScreen(
-                    onCancel = { navController.popBackStack() },
-                    onSubmit = { navController.popBackStack() }
-                )
+                RequestFormScreen(onCancel = { navController.popBackStack() }, onSubmit = { navController.popBackStack() })
+            }
+            composable("new_post") {
+                NewPostScreen(onPostUploaded = {
+                    navController.navigate("home") { popUpTo("home") { inclusive = true } }
+                })
             }
 
-            composable("new_post") {
-                NewPostScreen(
-                    onPostUploaded = {
-                        navController.navigate("home") {
-                            popUpTo("home") { inclusive = true }
-                        }
-                    }
-                )
-            }
+            composable("notifications") { NotificationScreen(navController = navController) }
 
             composable("comments/{postId}/{postAuthorId}") { backStack ->
                 val postId = backStack.arguments?.getString("postId") ?: return@composable
-                val postAuthorId =
-                    backStack.arguments?.getString("postAuthorId") ?: return@composable
-                CommentScreen(
-                    postId = postId,
-                    postAuthorId = postAuthorId,
-                    onBack = { navController.popBackStack() }
-                )
+                val postAuthorId = backStack.arguments?.getString("postAuthorId") ?: return@composable
+                CommentScreen(postId = postId, postAuthorId = postAuthorId, onBack = { navController.popBackStack() })
             }
 
             composable(
@@ -328,10 +277,7 @@ private fun MemberApp(
                     navArgument("chatId") { type = NavType.StringType },
                     navArgument("otherUserId") { type = NavType.StringType },
                     navArgument("otherUserName") { type = NavType.StringType },
-                    navArgument("otherUserPhoto") {
-                        type = NavType.StringType
-                        defaultValue = ""
-                    }
+                    navArgument("otherUserPhoto") { type = NavType.StringType; defaultValue = "" }
                 )
             ) { backStackEntry ->
                 EnhancedChatScreen(
@@ -346,11 +292,7 @@ private fun MemberApp(
             composable("view_profile/{userId}/{role}") { backStack ->
                 val userId = backStack.arguments?.getString("userId") ?: return@composable
                 val role = backStack.arguments?.getString("role") ?: return@composable
-                ViewProfileScreen(
-                    navController = navController,
-                    userId = userId,
-                    userRole = role
-                )
+                ViewProfileScreen(navController = navController, userId = userId, userRole = role)
             }
         }
     }
@@ -363,85 +305,37 @@ private fun AdminApp(
     userNeighborhood: String,
     auth: FirebaseAuth
 ) {
-    Scaffold(
-        bottomBar = {
-            AdminBottomBar(navController = navController)
-        }
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = "home",
-            modifier = Modifier.padding(innerPadding)
-        ) {
+    Scaffold(bottomBar = { AdminBottomBar(navController = navController) }) { innerPadding ->
+        NavHost(navController, startDestination = "home", modifier = Modifier.padding(innerPadding)) {
             // ============ MEMBER SCREENS (INHERITED) ============
-            composable("home") {
-                HomeScreen(
-                    navController = navController,
-                    userNeighborhood = userNeighborhood
-                )
-            }
-
-            composable("search") {
-                SearchScreen(navController = navController)
-            }
-
+            composable("home") { HomeScreen(navController = navController, userNeighborhood = userNeighborhood) }
+            composable("search") { SearchScreen(navController = navController) }
             composable("inbox") {
-                InboxScreen(
-                    navController = navController,
-                    onCreateRequest = {
-                        navController.navigate("request_form")
-                    }
-                )
+                InboxScreen(navController = navController, onCreateRequest = { navController.navigate("request_form") })
             }
-
             composable("profile") {
                 ProfileScreen(
                     role = userRole,
-                    onLogout = {
-                        Log.d("AdminApp", "Logout triggered")
-                        auth.signOut()
-                        UserSessionManager.clearSession()
-                    },
-                    onCreatePost = {
-                        navController.navigate("new_post")
-                    }
+                    onLogout = { Log.d("AdminApp", "Logout triggered"); auth.signOut(); UserSessionManager.clearSession() },
+                    onCreatePost = { navController.navigate("new_post") }
                 )
             }
-
-            composable("requests") {
-                RequestsScreen(
-                    onCreateNew = {
-                        navController.navigate("request_form")
-                    }
-                )
-            }
-
+            composable("requests") { RequestsScreen(onCreateNew = { navController.navigate("request_form") }) }
             composable("request_form") {
-                RequestFormScreen(
-                    onCancel = { navController.popBackStack() },
-                    onSubmit = { navController.popBackStack() }
-                )
+                RequestFormScreen(onCancel = { navController.popBackStack() }, onSubmit = { navController.popBackStack() })
+            }
+            composable("new_post") {
+                NewPostScreen(onPostUploaded = {
+                    navController.navigate("home") { popUpTo("home") { inclusive = true } }
+                })
             }
 
-            composable("new_post") {
-                NewPostScreen(
-                    onPostUploaded = {
-                        navController.navigate("home") {
-                            popUpTo("home") { inclusive = true }
-                        }
-                    }
-                )
-            }
+            composable("notifications") { NotificationScreen(navController = navController) }
 
             composable("comments/{postId}/{postAuthorId}") { backStack ->
                 val postId = backStack.arguments?.getString("postId") ?: return@composable
-                val postAuthorId =
-                    backStack.arguments?.getString("postAuthorId") ?: return@composable
-                CommentScreen(
-                    postId = postId,
-                    postAuthorId = postAuthorId,
-                    onBack = { navController.popBackStack() }
-                )
+                val postAuthorId = backStack.arguments?.getString("postAuthorId") ?: return@composable
+                CommentScreen(postId = postId, postAuthorId = postAuthorId, onBack = { navController.popBackStack() })
             }
 
             composable(
@@ -450,10 +344,7 @@ private fun AdminApp(
                     navArgument("chatId") { type = NavType.StringType },
                     navArgument("otherUserId") { type = NavType.StringType },
                     navArgument("otherUserName") { type = NavType.StringType },
-                    navArgument("otherUserPhoto") {
-                        type = NavType.StringType
-                        defaultValue = ""
-                    }
+                    navArgument("otherUserPhoto") { type = NavType.StringType; defaultValue = "" }
                 )
             ) { backStackEntry ->
                 EnhancedChatScreen(
@@ -468,63 +359,24 @@ private fun AdminApp(
             composable("view_profile/{userId}/{role}") { backStack ->
                 val userId = backStack.arguments?.getString("userId") ?: return@composable
                 val role = backStack.arguments?.getString("role") ?: return@composable
-                ViewProfileScreen(
-                    navController = navController,
-                    userId = userId,
-                    userRole = role
-                )
+                ViewProfileScreen(navController = navController, userId = userId, userRole = role)
             }
 
             // ============ ADMIN SCREENS ============
             composable("admin_dashboard") {
                 AdminDashboardScreen(
-                    onNavigateToMembers = {
-                        navController.navigate("member_management")
-                    },
-                    onNavigateToProviders = {
-                        navController.navigate("provider_approval")
-                    },
-                    onNavigateToAnnouncements = {
-                        navController.navigate("announcements")
-                    },
-                    onNavigateToModeration = {
-                        navController.navigate("content_moderation")
-                    },
-                    onNavigateToJoinRequests = {
-                        navController.navigate("join_requests")
-                    }
+                    onNavigateToMembers = { navController.navigate("member_management") },
+                    onNavigateToProviders = { navController.navigate("provider_approval") },
+                    onNavigateToAnnouncements = { navController.navigate("announcements") },
+                    onNavigateToModeration = { navController.navigate("content_moderation") },
+                    onNavigateToJoinRequests = { navController.navigate("join_requests") }
                 )
             }
-
-            composable("member_management") {
-                MemberManagementScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-
-            composable("provider_approval") {
-                ProviderApprovalScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-
-            composable("announcements") {
-                AnnouncementManagementScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-
-            composable("content_moderation") {
-                ContentModerationScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-
-            composable("join_requests") {
-                JoinRequestsScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
+            composable("member_management") { MemberManagementScreen(onNavigateBack = { navController.popBackStack() }) }
+            composable("provider_approval") { ProviderApprovalScreen(onNavigateBack = { navController.popBackStack() }) }
+            composable("announcements") { AnnouncementManagementScreen(onNavigateBack = { navController.popBackStack() }) }
+            composable("content_moderation") { ContentModerationScreen(onNavigateBack = { navController.popBackStack() }) }
+            composable("join_requests") { JoinRequestsScreen(onNavigateBack = { navController.popBackStack() }) }
         }
     }
 }
