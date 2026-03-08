@@ -79,21 +79,50 @@ class MemberRequestViewModel(
             }
 
             val memberId = firebaseUser.uid
-            val memberName = UserSessionManager.currentUser.value?.name
+
+            // Prefer the live session value — avoids an extra Firestore read
+            // and always reflects the latest approved neighbourhood.
+            val sessionUser = UserSessionManager.currentUser.value
+            val memberName = sessionUser?.name
                 ?: firebaseUser.displayName
                 ?: "Member"
 
-            val memberNeighborhood = try {
-                FirebaseFirestore.getInstance()
-                    .collection("users")
-                    .document(memberId)
-                    .get()
-                    .await()
-                    .getString("neighborhood") ?: ""
-            } catch (e: Exception) {
-                Log.w(TAG, "Could not load neighborhood", e)
-                ""
-            }
+            // neighbourhoodId is the raw Firestore field on the user doc.
+            // We store BOTH the ID (for provider filtering) and the display
+            // name (shown on the card) on the service request.
+            val neighbourhoodId = sessionUser?.neighbourhoodId?.takeIf { it.isNotBlank() }
+                ?: run {
+                    // Fallback: read directly from Firestore if session is stale
+                    try {
+                        FirebaseFirestore.getInstance()
+                            .collection("users")
+                            .document(memberId)
+                            .get()
+                            .await()
+                            .getString("neighbourhoodId") ?: ""
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not load neighbourhoodId", e)
+                        ""
+                    }
+                }
+
+            // Resolve neighbourhood display name for the card subtitle
+            val memberNeighborhood = sessionUser?.neighbourhood?.takeIf { it.isNotBlank() }
+                ?: run {
+                    if (neighbourhoodId.isNotBlank()) {
+                        try {
+                            FirebaseFirestore.getInstance()
+                                .collection("neighbourhoods")
+                                .document(neighbourhoodId)
+                                .get()
+                                .await()
+                                .getString("name") ?: ""
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Could not load neighbourhood name", e)
+                            ""
+                        }
+                    } else ""
+                }
 
             val request = ServiceRequest(
                 title = title.trim(),
@@ -101,6 +130,7 @@ class MemberRequestViewModel(
                 serviceType = serviceType,
                 memberId = memberId,
                 memberName = memberName,
+                // Display name shown on provider's request card
                 memberNeighborhood = memberNeighborhood,
                 preferredDate = preferredDate?.let { Timestamp(it) },
                 status = ServiceRequest.STATUS_PENDING,
@@ -174,7 +204,6 @@ class MemberRequestViewModel(
                     )
                     .await()
 
-                // Recalculate provider rating — real-time listener handles UI update automatically
                 recalculateProviderRating(providerId)
 
             } catch (e: Exception) {

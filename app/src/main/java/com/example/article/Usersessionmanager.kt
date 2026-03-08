@@ -17,22 +17,16 @@ object UserSessionManager {
 
     private const val TAG = "UserSessionManager"
 
-    // Stable scope not tied to any composition — survives navigation
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    /* ---------------- CURRENT USER STATE ---------------- */
 
     private val _currentUser = MutableStateFlow<UserProfile?>(null)
     val currentUser: StateFlow<UserProfile?> = _currentUser.asStateFlow()
 
-    /* ---------------- LOADING STATE ---------------- */
-
-    // IMPORTANT: start as TRUE so app shows loader on launch
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     /* =====================================================
-       SAFE TIMESTAMP HELPER (Fixes RuntimeException crash)
+       SAFE TIMESTAMP HELPER
        ===================================================== */
 
     private fun DocumentSnapshot.getTimestampSafe(field: String): Timestamp {
@@ -46,6 +40,8 @@ object UserSessionManager {
 
     /* =====================================================
        SHARED PROFILE BUILDER
+       NOTE: neighbourhood field is left blank here —
+       it is resolved separately via resolveNeighbourhoodName()
        ===================================================== */
 
     private fun buildProfile(uid: String, doc: DocumentSnapshot) = UserProfile(
@@ -53,12 +49,34 @@ object UserSessionManager {
         email = doc.getString("email") ?: "",
         name = doc.getString("name") ?: "",
         role = doc.getString("role") ?: "member",
-        neighbourhood = doc.getString("neighbourhood") ?: "",
+        neighbourhood = "", // resolved separately below
+        neighbourhoodId = doc.getString("neighbourhoodId") ?: "",
         bio = doc.getString("bio") ?: "",
         photoUrl = doc.getString("photoUrl") ?: "",
         photoPublicId = doc.getString("photoPublicId") ?: "",
         createdAt = doc.getTimestampSafe("createdAt")
     )
+
+    /* =====================================================
+       RESOLVE NEIGHBOURHOOD NAME FROM ID
+       ===================================================== */
+
+    private suspend fun resolveNeighbourhoodName(
+        neighbourhoodId: String,
+        firestore: FirebaseFirestore
+    ): String {
+        if (neighbourhoodId.isBlank()) return ""
+        return try {
+            firestore.collection("neighbourhoods")
+                .document(neighbourhoodId)
+                .get()
+                .await()
+                .getString("name") ?: ""
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to resolve neighbourhood name for id=$neighbourhoodId", e)
+            ""
+        }
+    }
 
     /* =====================================================
        LOAD PROFILE — used on login only, touches _isLoading
@@ -68,7 +86,6 @@ object UserSessionManager {
         uid: String,
         firestore: FirebaseFirestore
     ): Result<UserProfile> {
-
         return try {
             Log.d(TAG, "Loading profile for UID = $uid")
             _isLoading.value = true
@@ -85,11 +102,14 @@ object UserSessionManager {
                 return Result.failure(Exception("Profile not found"))
             }
 
-            val profile = buildProfile(uid, doc)
+            val base = buildProfile(uid, doc)
+            val neighName = resolveNeighbourhoodName(base.neighbourhoodId, firestore)
+            val profile = base.copy(neighbourhood = neighName)
+
             _currentUser.value = profile
             _isLoading.value = false
 
-            Log.d(TAG, "Profile load SUCCESS → ${profile.email}")
+            Log.d(TAG, "Profile load SUCCESS → ${profile.email}, neighbourhood=${profile.neighbourhood}")
             Result.success(profile)
 
         } catch (e: Exception) {
@@ -102,8 +122,7 @@ object UserSessionManager {
 
     /* =====================================================
        REFRESH PROFILE — silent background update.
-       NEVER touches _isLoading — cannot trigger loading
-       screen or cause an infinite recomposition loop.
+       NEVER touches _isLoading.
        ===================================================== */
 
     fun refreshProfile(firestore: FirebaseFirestore) {
@@ -115,19 +134,21 @@ object UserSessionManager {
                     .document(uid)
                     .get()
                     .await()
+
                 if (doc.exists()) {
-                    _currentUser.value = buildProfile(uid, doc)
-                    Log.d(TAG, "Profile refresh SUCCESS → ${_currentUser.value?.email}")
+                    val base = buildProfile(uid, doc)
+                    val neighName = resolveNeighbourhoodName(base.neighbourhoodId, firestore)
+                    _currentUser.value = base.copy(neighbourhood = neighName)
+                    Log.d(TAG, "Profile refresh SUCCESS → neighbourhood=${_currentUser.value?.neighbourhood}")
                 }
             } catch (e: Exception) {
-                // Silent — do NOT clear session or touch _isLoading
                 Log.e(TAG, "Profile refresh FAILED (silent)", e)
             }
         }
     }
 
     /* =====================================================
-       FORCE SESSION (NEW — FIXES LOGIN STUCK ISSUE)
+       FORCE SESSION
        ===================================================== */
 
     fun setUser(profile: UserProfile) {
@@ -164,7 +185,8 @@ data class UserProfile(
     val email: String,
     val name: String,
     val role: String,
-    val neighbourhood: String,
+    val neighbourhood: String,       // resolved display name
+    val neighbourhoodId: String = "", // raw Firestore field
     val bio: String,
     val photoUrl: String,
     val photoPublicId: String,

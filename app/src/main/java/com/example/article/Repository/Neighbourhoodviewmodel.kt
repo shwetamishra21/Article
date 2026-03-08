@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.article.UserSessionManager
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -77,6 +78,12 @@ class JoinRequestViewModel : ViewModel() {
             val result = NeighbourhoodRepository.approveRequest(request)
             if (result.isSuccess) {
                 _successMessage.value = "${request.userName} approved successfully"
+
+                // Refresh the approved user's session if they happen to be the current user
+                // (covers admin approving their own request) AND refresh admin's own session
+                // so their neighbourhood name appears instantly everywhere.
+                UserSessionManager.refreshProfile(FirebaseFirestore.getInstance())
+
                 _neighbourhood.value?.id?.let { loadRequests(it) }
             } else {
                 _error.value = result.exceptionOrNull()?.message ?: "Failed to approve"
@@ -115,7 +122,6 @@ sealed class NeighbourhoodSearchState {
 }
 
 // ==================== NEIGHBOURHOOD SEARCH VIEW MODEL (Members) ====================
-// Used by the member SearchScreen. Single neighbourhood limit is enforced in the repository.
 
 class NeighbourhoodSearchViewModel : ViewModel() {
 
@@ -214,8 +220,6 @@ class NeighbourhoodSearchViewModel : ViewModel() {
 }
 
 // ==================== PROVIDER NEIGHBOURHOOD SEARCH VIEW MODEL ====================
-// Providers can join MULTIPLE neighbourhoods.
-// isActioning tracks per-card loading by storing the neighbourhoodId being actioned.
 
 class ProviderNeighbourhoodSearchViewModel : ViewModel() {
 
@@ -228,7 +232,6 @@ class ProviderNeighbourhoodSearchViewModel : ViewModel() {
     private val _actionMessage = MutableStateFlow<String?>(null)
     val actionMessage: StateFlow<String?> = _actionMessage.asStateFlow()
 
-    // Holds the neighbourhoodId currently being actioned (null = none in progress)
     private val _isActioning = MutableStateFlow<String?>(null)
     val isActioning: StateFlow<String?> = _isActioning.asStateFlow()
 
@@ -354,6 +357,11 @@ class AdminNeighbourhoodViewModel : ViewModel() {
             val result = NeighbourhoodRepository.createNeighbourhood(adminId, name.trim(), description.trim())
             if (result.isSuccess) {
                 _message.value = "Neighbourhood created successfully!"
+
+                // Refresh admin session so neighbourhood name appears instantly
+                // in HomeScreen and ProfileScreen without needing a restart.
+                UserSessionManager.refreshProfile(FirebaseFirestore.getInstance())
+
                 loadAdminNeighbourhood()
             } else {
                 _message.value = result.exceptionOrNull()?.message ?: "Failed to create neighbourhood"

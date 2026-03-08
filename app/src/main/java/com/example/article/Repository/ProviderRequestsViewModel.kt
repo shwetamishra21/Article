@@ -167,7 +167,6 @@ class ProviderRequestsViewModel(
             }
         }
     }
-
     fun decline(requestId: String) {
         viewModelScope.launch {
             val result = repository.declineRequest(requestId, byProvider = true)

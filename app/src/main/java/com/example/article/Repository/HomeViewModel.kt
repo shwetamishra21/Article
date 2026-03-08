@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.article.FeedItem
 import com.example.article.Repository.FeedRepository
+import com.example.article.Repository.NeighbourhoodRepository
+import com.example.article.UserSessionManager
 import com.example.article.core.UiState
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
@@ -11,6 +13,7 @@ import com.example.article.Repository.LikeRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import com.example.article.CommentRepository
 
 class HomeViewModel : ViewModel() {
@@ -54,8 +57,73 @@ class HomeViewModel : ViewModel() {
                 }
 
                 lastVisible = snapshot.documents.lastOrNull()
-                _uiState.value = UiState.Success(items)
+
+                // Merge with any announcements already in state so they aren't wiped
+                val existing = (_uiState.value as? UiState.Success)?.data ?: emptyList()
+                val existingAnnouncements = existing.filterIsInstance<FeedItem.Announcement>()
+                val merged = mergeAndSort(items, existingAnnouncements)
+                _uiState.value = UiState.Success(merged)
             }
+    }
+
+    /**
+     * Fetch announcements for the current user's neighbourhood.
+     * Only members/admins of that neighbourhood will see them.
+     * Call this after loadFeed() — typically in a LaunchedEffect in HomeScreen.
+     */
+    fun loadNeighbourhoodAnnouncements() {
+        viewModelScope.launch {
+            try {
+                val neighbourhoodId = UserSessionManager.currentUser.value?.neighbourhoodId
+                    ?.takeIf { it.isNotBlank() } ?: return@launch
+
+                val snapshot = firestore
+                    .collection("neighbourhoods")
+                    .document(neighbourhoodId)
+                    .collection("announcements")
+                    .orderBy("createdAt", Query.Direction.DESCENDING)
+                    .get()
+                    .await()
+
+                val announcements = snapshot.documents.mapNotNull { doc ->
+                    try {
+                        val createdAt = doc.getLong("createdAt") ?: 0L
+                        FeedItem.Announcement(
+                            id = doc.id,
+                            title = doc.getString("title") ?: "",
+                            message = doc.getString("content") ?: "",
+                            time = createdAt
+                        )
+                    } catch (_: Exception) { null }
+                }
+
+                // Merge announcements into the current feed
+                val currentPosts = (_uiState.value as? UiState.Success)?.data
+                    ?.filterIsInstance<FeedItem.Post>() ?: emptyList()
+                _uiState.value = UiState.Success(mergeAndSort(currentPosts, announcements))
+
+            } catch (_: Exception) {
+                // Silent — posts still show even if announcements fail
+            }
+        }
+    }
+
+    /**
+     * Merge posts and announcements, sorted newest-first.
+     * Announcements always appear at the top (time = Long.MAX_VALUE trick avoided —
+     * instead we sort by time but announcements use their real createdAt).
+     */
+    private fun mergeAndSort(
+        posts: List<FeedItem>,
+        announcements: List<FeedItem.Announcement>
+    ): List<FeedItem> {
+        // Deduplicate posts by id
+        val dedupedPosts = posts.filterIsInstance<FeedItem.Post>().distinctBy { it.id }
+        // Deduplicate announcements by id
+        val dedupedAnnouncements = announcements.distinctBy { it.id }
+
+        // Announcements first (pinned at top), then posts sorted by time
+        return dedupedAnnouncements + dedupedPosts.sortedByDescending { it.time }
     }
 
     fun loadMore() {
@@ -110,7 +178,6 @@ class HomeViewModel : ViewModel() {
 
     fun deletePost(postId: String) {
         viewModelScope.launch {
-            // Stop listener so it doesn't immediately restore the deleted doc
             listener?.remove()
             listener = null
 
@@ -121,7 +188,6 @@ class HomeViewModel : ViewModel() {
                 current.filterNot { it is FeedItem.Post && it.id == postId }
             )
 
-            // Restart listener
             loadFeed()
         }
     }
@@ -147,6 +213,7 @@ class HomeViewModel : ViewModel() {
         listener = null
         lastVisible = null
         loadFeed()
+        loadNeighbourhoodAnnouncements()
     }
 
     fun addComment(postId: String, authorId: String, author: String, text: String) {
@@ -201,13 +268,9 @@ class HomeViewModel : ViewModel() {
                 )
             }
 
-            "announcement" -> FeedItem.Announcement(
-                id = doc.id,
-                title = doc.getString("title") ?: "",
-                message = doc.getString("content") ?: "",
-                time = time
-            )
-
+            // "announcement" type in the global posts collection is intentionally
+            // ignored here — announcements now come exclusively from
+            // neighbourhoods/{id}/announcements via loadNeighbourhoodAnnouncements()
             else -> null
         }
     }

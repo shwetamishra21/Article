@@ -55,6 +55,15 @@ fun HomeScreen(
         UserSessionManager.refreshProfile(FirebaseFirestore.getInstance())
     }
 
+    // Re-load announcements whenever the user's neighbourhoodId changes
+    // (e.g. after admin approves their join request)
+    val neighbourhoodId = currentUser?.neighbourhoodId ?: ""
+    LaunchedEffect(neighbourhoodId) {
+        if (neighbourhoodId.isNotBlank()) {
+            viewModel.loadNeighbourhoodAnnouncements()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -197,7 +206,6 @@ fun HomeScreen(
                         onDeletePost = { viewModel.deletePost(it) },
                         onDeleteAnnouncement = { viewModel.deleteAnnouncement(it) },
                         onReportPost = { postId ->
-                            // Report post to Firestore
                             val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
                             if (currentUserId != null) {
                                 FirebaseFirestore.getInstance()
@@ -381,6 +389,9 @@ private fun AnnouncementCard(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
 
+    // Only show delete option for admins
+    val currentUserRole = UserSessionManager.currentUser.collectAsState().value?.role
+
     Surface(
         modifier = Modifier
             .padding(horizontal = 16.dp)
@@ -391,7 +402,7 @@ private fun AnnouncementCard(
                 spotColor = Color(0xFF42A5F5).copy(alpha = 0.2f)
             ),
         shape = RoundedCornerShape(16.dp),
-        color = Color(0xFFE3F2FD) // Light blue matching app theme
+        color = Color(0xFFE3F2FD)
     ) {
         Column(
             modifier = Modifier
@@ -406,7 +417,6 @@ private fun AnnouncementCard(
                 )
                 .padding(14.dp)
         ) {
-            // Header with icon - Compact
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -451,40 +461,42 @@ private fun AnnouncementCard(
                     )
                 }
 
-                IconButton(
-                    onClick = { showMenu = true },
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        Icons.Default.MoreVert,
-                        contentDescription = "More",
-                        modifier = Modifier.size(18.dp),
-                        tint = Color(0xFF1976D2)
-                    )
-                }
+                // Only admins see the delete menu
+                if (currentUserRole == "admin") {
+                    IconButton(
+                        onClick = { showMenu = true },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = "More",
+                            modifier = Modifier.size(18.dp),
+                            tint = Color(0xFF1976D2)
+                        )
+                    }
 
-                DropdownMenu(showMenu, { showMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Delete", fontSize = 13.sp, fontWeight = FontWeight.Medium) },
-                        onClick = {
-                            showMenu = false
-                            showDeleteDialog = true
-                        },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = null,
-                                tint = Color(0xFFD32F2F),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    )
+                    DropdownMenu(showMenu, { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Delete", fontSize = 13.sp, fontWeight = FontWeight.Medium) },
+                            onClick = {
+                                showMenu = false
+                                showDeleteDialog = true
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = Color(0xFFD32F2F),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        )
+                    }
                 }
             }
 
             Spacer(Modifier.height(8.dp))
 
-            // Title - Smaller font
             Text(
                 text = announcement.title,
                 modifier = Modifier.fillMaxWidth(),
@@ -496,7 +508,6 @@ private fun AnnouncementCard(
 
             Spacer(Modifier.height(6.dp))
 
-            // Message - Compact
             Text(
                 text = announcement.message,
                 modifier = Modifier.fillMaxWidth(),
@@ -569,7 +580,6 @@ private fun PostCard(
         Column(
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Header - Author Info
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -577,7 +587,6 @@ private fun PostCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Avatar with profile picture
                 if (!userPhotoUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = userPhotoUrl,
@@ -604,7 +613,6 @@ private fun PostCard(
                     }
                 }
 
-                // Author Name & Time
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -622,7 +630,6 @@ private fun PostCard(
                     )
                 }
 
-                // More Options
                 IconButton(
                     onClick = { showMenu = true },
                     modifier = Modifier.size(32.dp)
@@ -672,7 +679,6 @@ private fun PostCard(
                 }
             }
 
-            // Content Text
             Text(
                 text = item.content,
                 modifier = Modifier
@@ -685,7 +691,6 @@ private fun PostCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            // Image (if present)
             if (!item.imageUrl.isNullOrBlank()) {
                 Spacer(Modifier.height(12.dp))
                 Surface(
@@ -712,21 +717,18 @@ private fun PostCard(
 
             Spacer(Modifier.height(12.dp))
 
-            // Divider
             HorizontalDivider(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 color = Color(0xFFE0E0E0),
                 thickness = 1.dp
             )
 
-            // Action Buttons
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                // Like Button
                 Surface(
                     onClick = { onLike(item) },
                     modifier = Modifier.weight(1f),
@@ -745,27 +747,20 @@ private fun PostCard(
                             if (item.likedByMe) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
                             contentDescription = "Like",
                             modifier = Modifier.size(20.dp),
-                            tint = if (item.likedByMe)
-                                Color(0xFF42A5F5)
-                            else
-                                Color(0xFF666666)
+                            tint = if (item.likedByMe) Color(0xFF42A5F5) else Color(0xFF666666)
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = if (item.likes > 0) item.likes.toString() else "Like",
                             fontSize = 14.sp,
                             fontWeight = if (item.likedByMe) FontWeight.Bold else FontWeight.Medium,
-                            color = if (item.likedByMe)
-                                Color(0xFF42A5F5)
-                            else
-                                Color(0xFF666666)
+                            color = if (item.likedByMe) Color(0xFF42A5F5) else Color(0xFF666666)
                         )
                     }
                 }
 
                 Spacer(Modifier.width(8.dp))
 
-                // Comment Button
                 Surface(
                     onClick = { navController.navigate("comments/${item.id}/${item.authorId}") },
                     modifier = Modifier.weight(1f),
@@ -802,12 +797,7 @@ private fun PostCard(
             title = { Text("Delete Post", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
             text = { Text("Are you sure you want to delete this post? This action cannot be undone.", fontSize = 14.sp) },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteDialog = false
-                        onDelete(item.id)
-                    }
-                ) {
+                TextButton(onClick = { showDeleteDialog = false; onDelete(item.id) }) {
                     Text("Delete", color = Color(0xFFD32F2F), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             },
@@ -839,12 +829,7 @@ private fun PostCard(
                 )
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        showReportDialog = false
-                        onReport(item.id)
-                    }
-                ) {
+                TextButton(onClick = { showReportDialog = false; onReport(item.id) }) {
                     Text("Report", color = Color(0xFFFF6F00), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             },
