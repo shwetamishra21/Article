@@ -1,4 +1,4 @@
-package com.example.article.chat
+package com.example.article
 
 import android.net.Uri
 import androidx.compose.animation.*
@@ -15,6 +15,8 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com. example. article. chat. ChatMessage
+import com. example. article. chat. ChatViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip

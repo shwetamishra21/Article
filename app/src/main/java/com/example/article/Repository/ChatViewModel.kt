@@ -3,6 +3,9 @@ package com.example.article.chat
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.article.Repository.AppNotification
+import com.example.article.Repository.NotificationRepository
+
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -116,9 +119,22 @@ class ChatViewModel : ViewModel() {
             )
 
             if (result.isFailure) {
-                _uiState.value = _uiState.value.copy(
-                    error = "Failed to send message"
-                )
+                _uiState.value = _uiState.value.copy(error = "Failed to send message")
+            } else {
+                // Write in-app notification for the recipient.
+                // referenceId = "chatId|senderId|senderName" — NotificationScreen uses
+                // this to deep-link back into the correct chat on tap.
+                NotificationRepository.createNotification(
+                    AppNotification(
+                        recipientId = recipientId,
+                        type = AppNotification.TYPE_MESSAGE,
+                        title = currentUserName,
+                        body = text.take(100),
+                        referenceId = "$chatId|$currentUserId|$currentUserName"
+                    )
+                ).onFailure { e ->
+                    Log.w(TAG, "Failed to write message notification", e)
+                }
             }
         }
     }

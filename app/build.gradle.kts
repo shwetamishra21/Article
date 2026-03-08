@@ -87,6 +87,7 @@ dependencies {
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-storage-ktx")
+    implementation("com.google.firebase:firebase-messaging-ktx") // NEW: push notifications
 
     // Cloudinary
     implementation("com.cloudinary:cloudinary-android:2.3.1")

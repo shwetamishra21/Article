@@ -35,20 +35,26 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import java.text.SimpleDateFormat
 import java.util.*
+import com.example.article.Repository.NotificationViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     navController: NavController,
     viewModel: HomeViewModel = viewModel(),
+    notificationViewModel: NotificationViewModel = viewModel(),
     userNeighborhood: String = "Your Neighborhood"
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var unreadNotifications by remember { mutableIntStateOf(3) }
+    val unreadCount by notificationViewModel.unreadCount.collectAsState()
 
     val currentUser by UserSessionManager.currentUser.collectAsState()
     val actualNeighborhood = currentUser?.neighbourhood
         ?.takeIf { it.isNotBlank() } ?: userNeighborhood
+
+    LaunchedEffect(currentUser?.uid) {
+        currentUser?.uid?.let { notificationViewModel.startObserving(it) }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.loadFeed()
@@ -63,7 +69,6 @@ fun HomeScreen(
             viewModel.loadNeighbourhoodAnnouncements()
         }
     }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -75,28 +80,33 @@ fun HomeScreen(
                         color = Color.White
                     )
                 },
-                navigationIcon = {
+                actions = {
                     BadgedBox(
                         badge = {
-                            if (unreadNotifications > 0) {
+                            if (unreadCount > 0) {
                                 Badge(
                                     containerColor = Color(0xFFFF5252),
-                                    contentColor = Color.White
+                                    contentColor = Color.White,
+                                    modifier = Modifier.offset(x = (-4).dp, y = 4.dp)
                                 ) {
                                     Text(
-                                        "$unreadNotifications",
-                                        fontSize = 10.sp,
+                                        text = if (unreadCount > 99) "99+" else "$unreadCount",
+                                        fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
                         }
                     ) {
-                        IconButton(onClick = { unreadNotifications = 0 }) {
+                        IconButton(onClick = { navController.navigate("notifications") }) {
                             Icon(
-                                Icons.Default.Notifications,
+                                imageVector = if (unreadCount > 0)
+                                    Icons.Default.Notifications
+                                else
+                                    Icons.Default.NotificationsNone,
                                 contentDescription = "Notifications",
-                                tint = Color.White
+                                tint = Color.White,
+                                modifier = Modifier.size(26.dp)
                             )
                         }
                     }
@@ -312,7 +322,6 @@ private fun FeedList(
                 PostCard(post, onLike, navController, onDeletePost, onReportPost)
             }
         }
-
         item(key = "pagination") {
             LaunchedEffect(feed.size) { onLoadMore() }
         }
@@ -380,7 +389,6 @@ private fun HomeHeader(userNeighborhood: String) {
         }
     }
 }
-
 @Composable
 private fun AnnouncementCard(
     announcement: FeedItem.Announcement,
@@ -507,7 +515,6 @@ private fun AnnouncementCard(
             )
 
             Spacer(Modifier.height(6.dp))
-
             Text(
                 text = announcement.message,
                 modifier = Modifier.fillMaxWidth(),
@@ -519,7 +526,6 @@ private fun AnnouncementCard(
             )
         }
     }
-
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -544,7 +550,6 @@ private fun AnnouncementCard(
         )
     }
 }
-
 @Composable
 private fun PostCard(
     item: FeedItem.Post,
@@ -790,7 +795,6 @@ private fun PostCard(
             }
         }
     }
-
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -842,7 +846,6 @@ private fun PostCard(
         )
     }
 }
-
 private fun formatTimestamp(timestamp: Long): String {
     val now = System.currentTimeMillis()
     val diff = now - timestamp

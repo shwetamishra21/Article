@@ -4,6 +4,8 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.article.UserSessionManager
+import com.example.article.Repository.AppNotification
+import com.example.article.Repository.NotificationRepository
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,7 +33,7 @@ class ProviderRequestsViewModel(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    // All neighbourhoods this provider has been approved into (replaces single _providerNeighbourhood)
+    // All neighbourhoods this provider has been approved into
     private val _providerNeighbourhoods = MutableStateFlow<List<Neighbourhood>>(emptyList())
     val providerNeighbourhoods: StateFlow<List<Neighbourhood>> = _providerNeighbourhoods.asStateFlow()
 
@@ -64,15 +66,6 @@ class ProviderRequestsViewModel(
 
     /**
      * Load open/pending requests from ALL neighbourhoods this provider belongs to.
-     *
-     * Flow:
-     *  1. Query join_requests for this provider where status == "approved"
-     *  2. If none → set _noNeighbourhood = true, show join prompt
-     *  3. For each approved neighbourhood, fetch its member UIDs
-     *  4. Merge all UIDs into one deduplicated set
-     *  5. Subscribe to pending requests whose memberId is in that merged set
-     *
-     * Pass serviceType to further narrow results to a matching trade.
      */
     fun loadPendingRequests(serviceType: String? = null) {
         viewModelScope.launch {
@@ -86,7 +79,6 @@ class ProviderRequestsViewModel(
                 return@launch
             }
 
-            // Step 1: get all approved neighbourhoods for this provider
             val neighResult = NeighbourhoodRepository.getApprovedNeighbourhoodsForProvider(providerId)
             val neighbourhoods = neighResult.getOrNull() ?: emptyList()
 
@@ -102,7 +94,6 @@ class ProviderRequestsViewModel(
             _providerNeighbourhoods.value = neighbourhoods
             Log.d(TAG, "Provider is in ${neighbourhoods.size} neighbourhood(s): ${neighbourhoods.map { it.name }}")
 
-            // Step 2: collect member UIDs from all neighbourhoods (deduplicated)
             val allMemberUids = mutableSetOf<String>()
             for (neighbourhood in neighbourhoods) {
                 val uidsResult = NeighbourhoodRepository.getMemberUidsOfNeighbourhood(neighbourhood.id)
@@ -117,7 +108,6 @@ class ProviderRequestsViewModel(
                 return@launch
             }
 
-            // Step 3: subscribe to live pending requests filtered to those UIDs
             try {
                 repository.getPendingRequestsForNeighbourhood(allMemberUids.toList(), serviceType)
                     .collect { list ->
@@ -137,13 +127,29 @@ class ProviderRequestsViewModel(
             val providerName = UserSessionManager.currentUser.value?.name
                 ?: FirebaseAuth.getInstance().currentUser?.displayName
                 ?: "Provider"
+
             val result = repository.acceptRequest(requestId, providerId, providerName)
+
             if (result.isFailure) {
                 val msg = result.exceptionOrNull()?.message ?: "Failed to accept request"
                 _error.value = msg
                 Log.e(TAG, "accept error: $msg")
             } else {
                 Log.d(TAG, "Request $requestId accepted")
+                // Notify the member their request was accepted
+                val request = _pendingRequests.value.find { it.id == requestId }
+                    ?: _requests.value.find { it.id == requestId }
+                if (request != null) {
+                    NotificationRepository.createNotification(
+                        AppNotification(
+                            recipientId = request.memberId,
+                            type = AppNotification.TYPE_SERVICE_REQUEST,
+                            title = "Request Accepted",
+                            body = "$providerName accepted your request: ${request.title}",
+                            referenceId = requestId
+                        )
+                    ).onFailure { e -> Log.w(TAG, "Failed to write accept notification", e) }
+                }
             }
         }
     }
@@ -154,6 +160,21 @@ class ProviderRequestsViewModel(
             if (result.isFailure) {
                 _error.value = result.exceptionOrNull()?.message ?: "Failed to start work"
                 Log.e(TAG, "startWork error", result.exceptionOrNull())
+            } else {
+                // Notify the member work has started
+                val request = _requests.value.find { it.id == requestId }
+                val providerName = UserSessionManager.currentUser.value?.name ?: "Your provider"
+                if (request != null) {
+                    NotificationRepository.createNotification(
+                        AppNotification(
+                            recipientId = request.memberId,
+                            type = AppNotification.TYPE_SERVICE_REQUEST,
+                            title = "Work Started",
+                            body = "$providerName has started work on: ${request.title}",
+                            referenceId = requestId
+                        )
+                    ).onFailure { e -> Log.w(TAG, "Failed to write startWork notification", e) }
+                }
             }
         }
     }
@@ -164,9 +185,25 @@ class ProviderRequestsViewModel(
             if (result.isFailure) {
                 _error.value = result.exceptionOrNull()?.message ?: "Failed to complete request"
                 Log.e(TAG, "complete error", result.exceptionOrNull())
+            } else {
+                // Notify the member the job is done
+                val request = _requests.value.find { it.id == requestId }
+                val providerName = UserSessionManager.currentUser.value?.name ?: "Your provider"
+                if (request != null) {
+                    NotificationRepository.createNotification(
+                        AppNotification(
+                            recipientId = request.memberId,
+                            type = AppNotification.TYPE_SERVICE_REQUEST,
+                            title = "Job Completed",
+                            body = "$providerName has completed: ${request.title}. Please rate your experience.",
+                            referenceId = requestId
+                        )
+                    ).onFailure { e -> Log.w(TAG, "Failed to write complete notification", e) }
+                }
             }
         }
     }
+
     fun decline(requestId: String) {
         viewModelScope.launch {
             val result = repository.declineRequest(requestId, byProvider = true)
