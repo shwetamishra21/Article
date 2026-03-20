@@ -3,7 +3,6 @@
 **Article** is a comprehensive Android application that brings neighbourhood communities together on a single, structured platform. The app facilitates **community interaction**, **local announcements**, **service coordination**, and **real-time messaging** with a focus on **real-time updates**, **role-based access**, and **professional UI/UX**.
 
 > 🎯 **Status**: Complete — Full-stack production-ready implementation with Firebase backend, real-time data synchronization, push notifications, and premium Material 3 UI.
-
 ---
 
 ## ✨ Core Features
