@@ -70,7 +70,7 @@
 
 ## 🎨 Design Philosophy
 
-- **Premium Material 3 Design**: Gradient top bars, elevated cards, smooth shadows
+- **Premium Material 3 Design**: Gradient top bars, elevated cards, smooth shadow
 - **Blue-based Theme**: Calm, professional color palette (Blue Primary → Blue Secondary gradients)
 - **Consistent UI Components**: Reusable premium cards, badges, and buttons across all screens
 - **Accessibility-first**: High contrast, readable fonts, proper touch targets
